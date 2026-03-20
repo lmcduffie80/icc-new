@@ -143,7 +143,7 @@ export default function PlanHistoryPage() {
         <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-3">
             <Link
-              href="/crop"
+              href="/crop/dashboard"
               className="flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700 hover:cursor-pointer"
             >
               <ChevronLeft className="h-4 w-4" />

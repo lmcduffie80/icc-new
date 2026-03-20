@@ -510,7 +510,7 @@ export function AcrePackBuilder({ program }: AcrePackBuilderProps) {
               </div>
               <div className="flex gap-3">
                 <Button variant="outline" asChild>
-                  <Link href="/shop/acre-pack">Build Another Pack</Link>
+                  <Link href="/crop">Build Another Pack</Link>
                 </Button>
                 <Button asChild>
                   <Link href="/checkout">

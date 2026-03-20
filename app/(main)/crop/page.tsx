@@ -1,319 +1,249 @@
-'use client';
-
-import { useEffect, useState, useCallback } from 'react';
+import type { Metadata } from 'next';
+import { redirect } from 'next/navigation';
+import { headers } from 'next/headers';
 import Link from 'next/link';
-import { useAuth } from '@/components/auth-provider';
 import {
-  Plus,
-  Sprout,
-  Clock,
+  Layers,
   ChevronRight,
-  Trash2,
-  FileText,
-  History,
-  Sparkles,
-  Sun,
   Wheat,
+  Sprout,
   Leaf,
+  Sun,
+  Calculator,
+  ShoppingCart,
+  ClipboardList,
+  CheckCircle2,
+  Users,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { auth } from '@/lib/auth';
 
-interface CropPlan {
-  id: number;
-  plan_name: string;
-  crop: string;
-  plan_year: number;
-  total_acres: string;
-  target_weeds: string[];
-  weed_pressure: string | null;
-  total_cost: string | null;
-  cost_per_acre: string | null;
-  status: string;
-  ai_generated: boolean;
-  pass_count: number;
-  created_at: string;
-  updated_at: string;
-}
-
-const CROP_ICONS: Record<string, React.ReactNode> = {
-  corn: <Sun className="h-5 w-5 text-yellow-500" />,
-  soybeans: <Sprout className="h-5 w-5 text-green-600" />,
-  wheat: <Wheat className="h-5 w-5 text-amber-600" />,
-  cotton: <Leaf className="h-5 w-5 text-sky-600" />,
+export const metadata: Metadata = {
+  title: 'Innovative Crop Planning | Innovative Crop Care',
+  description:
+    'Build your complete crop input plan. Select your crop, enter your acreage, and get a customized product recommendation with exact quantities and cost per acre.',
 };
 
-const CROP_COLORS: Record<string, string> = {
-  corn: 'bg-yellow-50 border-yellow-200',
-  soybeans: 'bg-green-50 border-green-200',
-  wheat: 'bg-amber-50 border-amber-200',
-  cotton: 'bg-sky-50 border-sky-200',
-};
+const CROPS = [
+  {
+    slug: 'corn',
+    label: 'Corn',
+    tagline: 'Pre-emerge, post-emerge, and fungicide passes for maximum yield.',
+    icon: <Sun className="h-12 w-12 text-yellow-500" />,
+    gradient: 'from-yellow-400 to-amber-500',
+    cardBg: 'bg-gradient-to-br from-yellow-50 to-amber-50 border-yellow-200',
+    badgeColor: 'bg-yellow-100 text-yellow-800',
+    btnClass: 'bg-yellow-500 hover:bg-yellow-600 text-white',
+  },
+  {
+    slug: 'soybeans',
+    label: 'Soybeans',
+    tagline: 'Full-season weed and disease management for high-protein beans.',
+    icon: <Sprout className="h-12 w-12 text-green-600" />,
+    gradient: 'from-green-500 to-emerald-600',
+    cardBg: 'bg-gradient-to-br from-green-50 to-emerald-50 border-green-200',
+    badgeColor: 'bg-green-100 text-green-800',
+    btnClass: 'bg-green-600 hover:bg-green-700 text-white',
+  },
+  {
+    slug: 'wheat',
+    label: 'Wheat',
+    tagline: 'Fall burndown through spring head scab protection.',
+    icon: <Wheat className="h-12 w-12 text-amber-600" />,
+    gradient: 'from-amber-500 to-orange-500',
+    cardBg: 'bg-gradient-to-br from-amber-50 to-orange-50 border-amber-200',
+    badgeColor: 'bg-amber-100 text-amber-800',
+    btnClass: 'bg-amber-600 hover:bg-amber-700 text-white',
+  },
+  {
+    slug: 'cotton',
+    label: 'Cotton',
+    tagline: 'Burndown, pre-emerge, and in-season passes for cotton production.',
+    icon: <Leaf className="h-12 w-12 text-sky-600" />,
+    gradient: 'from-sky-500 to-blue-600',
+    cardBg: 'bg-gradient-to-br from-sky-50 to-blue-50 border-sky-200',
+    badgeColor: 'bg-sky-100 text-sky-800',
+    btnClass: 'bg-sky-600 hover:bg-sky-700 text-white',
+  },
+];
 
-const STATUS_LABELS: Record<string, { label: string; color: string }> = {
-  draft: { label: 'Draft', color: 'bg-slate-100 text-slate-600' },
-  saved: { label: 'Saved', color: 'bg-emerald-100 text-emerald-700' },
-  archived: { label: 'Archived', color: 'bg-gray-100 text-gray-500' },
-};
+const TRUST_ITEMS = [
+  { icon: <Users className="h-5 w-5" />, label: 'Agronomist-curated programs' },
+  { icon: <Layers className="h-5 w-5" />, label: '4 crops supported' },
+  { icon: <Calculator className="h-5 w-5" />, label: 'Exact quantities calculated' },
+  { icon: <CheckCircle2 className="h-5 w-5" />, label: 'No math required' },
+];
 
-export default function CropPlanningDashboard() {
-  const { user } = useAuth();
-  const [plans, setPlans] = useState<CropPlan[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [deletingId, setDeletingId] = useState<number | null>(null);
-  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
-  const currentYear = new Date().getFullYear();
+const STEPS = [
+  {
+    step: '1',
+    icon: <ClipboardList className="h-8 w-8 text-emerald-600" />,
+    title: 'Pick Your Crop & Acres',
+    desc: 'Choose from corn, soybeans, wheat, or cotton and enter your total acreage.',
+  },
+  {
+    step: '2',
+    icon: <Calculator className="h-8 w-8 text-emerald-600" />,
+    title: 'Select Products Per Pass',
+    desc: 'Walk through each application timing. Adjust rates with a slider — we calculate the exact quantity to order.',
+  },
+  {
+    step: '3',
+    icon: <ShoppingCart className="h-8 w-8 text-emerald-600" />,
+    title: 'Add All to Cart',
+    desc: 'Review your complete program with total cost per acre, then add everything to your cart in one click.',
+  },
+];
 
-  const fetchPlans = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/crop?year=${currentYear}`);
-      if (res.ok) {
-        const data = await res.json();
-        setPlans(data.plans ?? []);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [currentYear]);
-
-  useEffect(() => {
-    fetchPlans();
-  }, [fetchPlans]);
-
-  const handleDeleteClick = (planId: number) => {
-    setConfirmDeleteId(planId);
-  };
-
-  const handleDeleteConfirm = async (planId: number) => {
-    setConfirmDeleteId(null);
-    setDeletingId(planId);
-    try {
-      await fetch(`/api/crop/${planId}`, { method: 'DELETE' });
-      setPlans((prev) => prev.filter((p) => p.id !== planId));
-    } finally {
-      setDeletingId(null);
-    }
-  };
-
-  const fmt = (n: string | null) =>
-    n ? `$${parseFloat(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—';
+export default async function CropPlanningLandingPage() {
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (session?.user) {
+    redirect('/crop/dashboard');
+  }
 
   return (
-    <div className="min-h-[calc(100vh-4rem)] bg-slate-50">
-      {/* Header */}
-      <div className="bg-gradient-to-br from-emerald-950 via-emerald-900 to-green-800 py-12 text-white">
-        <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <div className="mb-2 flex items-center gap-2 text-emerald-300 text-sm font-medium">
-                <Sprout className="h-4 w-4" />
-                Innovative Crop Planning
-              </div>
-              <h1 className="text-3xl font-extrabold tracking-tight sm:text-4xl">
-                Welcome back, {user?.name?.split(' ')[0] ?? 'Farmer'}
-              </h1>
-              <p className="mt-2 text-emerald-100/80">
-                Your {currentYear} crop plans — AI-powered weed management programs built around your operation.
-              </p>
-            </div>
+    <div className="flex flex-col">
+      {/* Hero */}
+      <section className="relative overflow-hidden bg-gradient-to-br from-emerald-950 via-emerald-900 to-green-800 py-24 text-white">
+        <div className="absolute inset-0 opacity-10 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-yellow-400 via-transparent to-transparent" />
+        <div className="relative mx-auto max-w-5xl px-4 text-center sm:px-6 lg:px-8">
+          <h1 className="mb-5 text-5xl font-extrabold leading-tight tracking-tight sm:text-6xl">
+            Innovative Crop Planning
+          </h1>
+          <p className="mx-auto mb-8 max-w-2xl text-lg text-emerald-100/90 sm:text-xl">
+            Stop guessing on rates and quantities. ICC agronomists have built application programs
+            for every major crop. Enter your acres, pick your products, and walk out with an exact
+            order — cost per acre included.
+          </p>
+          <div className="flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
             <Button
               asChild
               size="lg"
-              className="bg-white text-emerald-900 hover:bg-emerald-50 font-bold shrink-0 hover:cursor-pointer"
+              className="bg-white text-emerald-900 hover:bg-emerald-50 font-bold px-8 text-base hover:cursor-pointer"
             >
-              <Link href="/crop/new">
-                <Plus className="mr-2 h-5 w-5" />
-                New Plan
+              <Link href="/auth/sign-in?callbackUrl=/crop/dashboard">
+                Build My Pack
+                <ChevronRight className="ml-1 h-5 w-5" />
               </Link>
+            </Button>
+            <Button
+              asChild
+              variant="outline"
+              size="lg"
+              className="border-emerald-400 text-emerald-100 hover:bg-emerald-800/60 bg-transparent px-8 text-base hover:cursor-pointer"
+            >
+              <Link href="/contact">Talk to an Agronomist</Link>
             </Button>
           </div>
         </div>
-      </div>
+      </section>
 
-      <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6 lg:px-8">
-        {/* Quick links */}
-        <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <Link
-            href="/crop/new"
-            className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-white p-4 shadow-sm hover:shadow-md transition-shadow hover:cursor-pointer"
-          >
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100">
-              <Sparkles className="h-5 w-5 text-emerald-600" />
-            </div>
-            <div>
-              <p className="font-semibold text-slate-900 text-sm">AI Plan Builder</p>
-              <p className="text-xs text-slate-500">Tell us your weeds, get a plan</p>
-            </div>
-            <ChevronRight className="ml-auto h-4 w-4 text-slate-400" />
-          </Link>
-
-          <Link
-            href="/crop/history"
-            className="flex items-center gap-3 rounded-xl border border-border bg-white p-4 shadow-sm hover:shadow-md transition-shadow hover:cursor-pointer"
-          >
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-100">
-              <History className="h-5 w-5 text-slate-600" />
-            </div>
-            <div>
-              <p className="font-semibold text-slate-900 text-sm">Plan History</p>
-              <p className="text-xs text-slate-500">View previous years</p>
-            </div>
-            <ChevronRight className="ml-auto h-4 w-4 text-slate-400" />
-          </Link>
-
-          <Link
-            href="/account"
-            className="flex items-center gap-3 rounded-xl border border-border bg-white p-4 shadow-sm hover:shadow-md transition-shadow hover:cursor-pointer"
-          >
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-100">
-              <FileText className="h-5 w-5 text-slate-600" />
-            </div>
-            <div>
-              <p className="font-semibold text-slate-900 text-sm">My Account</p>
-              <p className="text-xs text-slate-500">Orders, profile, settings</p>
-            </div>
-            <ChevronRight className="ml-auto h-4 w-4 text-slate-400" />
-          </Link>
-        </div>
-
-        {/* Plans for current year */}
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-xl font-bold text-slate-900">{currentYear} Plans</h2>
-          <Link href="/crop/history" className="text-sm text-emerald-600 hover:underline">
-            View all years →
-          </Link>
-        </div>
-
-        {loading ? (
-          <div className="flex items-center justify-center py-16">
-            <svg className="animate-spin h-6 w-6 text-emerald-600" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-            </svg>
+      {/* Trust bar */}
+      <section className="border-b border-border/40 bg-emerald-900 py-4">
+        <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
+          <div className="flex flex-wrap items-center justify-center gap-x-8 gap-y-3">
+            {TRUST_ITEMS.map((item) => (
+              <div key={item.label} className="flex items-center gap-2 text-sm font-medium text-emerald-100">
+                <span className="text-emerald-400">{item.icon}</span>
+                {item.label}
+              </div>
+            ))}
           </div>
-        ) : plans.length === 0 ? (
-          <div className="rounded-2xl border-2 border-dashed border-border bg-white py-16 text-center">
-            <Sprout className="mx-auto mb-3 h-10 w-10 text-slate-300" />
-            <h3 className="mb-1 font-semibold text-slate-700">No plans yet for {currentYear}</h3>
-            <p className="mb-6 text-sm text-slate-500">
-              Build your first AI-powered crop plan — tell us your weeds and we&apos;ll recommend the right products.
-            </p>
-            <Button asChild className="bg-emerald-600 hover:bg-emerald-700 hover:cursor-pointer">
-              <Link href="/crop/new">
-                <Plus className="mr-2 h-4 w-4" />
-                Build First Plan
-              </Link>
-            </Button>
+        </div>
+      </section>
+
+      {/* How it works */}
+      <section className="bg-slate-50 py-16">
+        <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
+          <div className="mb-10 text-center">
+            <h2 className="text-3xl font-bold text-slate-900">How It Works</h2>
+            <p className="mt-2 text-slate-500">Three steps from crop selection to cart.</p>
           </div>
-        ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {plans.map((plan) => {
-              const status = STATUS_LABELS[plan.status] ?? STATUS_LABELS.draft;
-              const cropColor = CROP_COLORS[plan.crop] ?? 'bg-slate-50 border-slate-200';
-              return (
-                <div
-                  key={plan.id}
-                  className={`group relative rounded-2xl border-2 bg-white p-5 shadow-sm hover:shadow-md transition-shadow ${cropColor}`}
-                >
-                  <div className="mb-3 flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      {CROP_ICONS[plan.crop] ?? <Sprout className="h-5 w-5 text-emerald-600" />}
-                      <span className="font-bold text-slate-900 capitalize">{plan.crop}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {plan.ai_generated && (
-                        <span className="flex items-center gap-1 rounded-full bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-700">
-                          <Sparkles className="h-3 w-3" />
-                          AI
-                        </span>
-                      )}
-                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${status.color}`}>
-                        {status.label}
-                      </span>
-                    </div>
-                  </div>
-
-                  <h3 className="mb-1 font-semibold text-slate-900 leading-tight">{plan.plan_name}</h3>
-
-                  {plan.target_weeds && plan.target_weeds.length > 0 && (
-                    <p className="mb-2 text-xs text-slate-500 line-clamp-1">
-                      Targeting: {plan.target_weeds.join(', ')}
-                    </p>
-                  )}
-
-                  <div className="mb-4 grid grid-cols-3 gap-2 text-center">
-                    <div className="rounded-lg bg-white/70 p-2">
-                      <p className="text-xs text-slate-500">Acres</p>
-                      <p className="font-bold text-slate-900 text-sm">
-                        {parseFloat(plan.total_acres).toLocaleString()}
-                      </p>
-                    </div>
-                    <div className="rounded-lg bg-white/70 p-2">
-                      <p className="text-xs text-slate-500">Passes</p>
-                      <p className="font-bold text-slate-900 text-sm">{plan.pass_count}</p>
-                    </div>
-                    <div className="rounded-lg bg-white/70 p-2">
-                      <p className="text-xs text-slate-500">Cost/Acre</p>
-                      <p className="font-bold text-slate-900 text-sm">{fmt(plan.cost_per_acre)}</p>
-                    </div>
-                  </div>
-
-                  {confirmDeleteId === plan.id ? (
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-red-600 font-medium shrink-0">Delete?</span>
-                      <button
-                        onClick={() => handleDeleteConfirm(plan.id)}
-                        className="flex-1 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700 transition-colors hover:cursor-pointer"
-                      >
-                        Yes, Delete
-                      </button>
-                      <button
-                        onClick={() => setConfirmDeleteId(null)}
-                        className="flex-1 rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors hover:cursor-pointer"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <Button
-                        asChild
-                        size="sm"
-                        className="flex-1 bg-emerald-600 hover:bg-emerald-700 hover:cursor-pointer"
-                      >
-                        <Link href={`/crop/${plan.id}`}>
-                          View Plan
-                          <ChevronRight className="ml-1 h-3 w-3" />
-                        </Link>
-                      </Button>
-                      <button
-                        onClick={() => handleDeleteClick(plan.id)}
-                        disabled={deletingId === plan.id}
-                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-white text-slate-400 hover:text-red-500 hover:border-red-200 transition-colors hover:cursor-pointer disabled:opacity-50"
-                        title="Delete plan"
-                      >
-                        {deletingId === plan.id ? (
-                          <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                          </svg>
-                        ) : (
-                          <Trash2 className="h-3 w-3" />
-                        )}
-                      </button>
-                    </div>
-                  )}
-
-                  <p className="mt-2 text-xs text-slate-400 flex items-center gap-1">
-                    <Clock className="h-3 w-3" />
-                    Updated {new Date(plan.updated_at).toLocaleDateString()}
-                  </p>
+          <div className="grid grid-cols-1 gap-8 sm:grid-cols-3">
+            {STEPS.map(({ step, icon, title, desc }) => (
+              <div
+                key={step}
+                className="relative flex flex-col items-center rounded-2xl border border-border/50 bg-white p-8 text-center shadow-sm"
+              >
+                <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-50">
+                  {icon}
                 </div>
-              );
-            })}
+                <span className="absolute -top-3 left-6 flex h-7 w-7 items-center justify-center rounded-full bg-emerald-600 text-sm font-bold text-white shadow">
+                  {step}
+                </span>
+                <h3 className="mb-2 text-lg font-bold text-slate-900">{title}</h3>
+                <p className="text-sm text-slate-500 leading-relaxed">{desc}</p>
+              </div>
+            ))}
           </div>
-        )}
-      </div>
+        </div>
+      </section>
+
+      {/* Crop cards */}
+      <section id="choose-crop" className="py-20">
+        <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
+          <div className="mb-12 text-center">
+            <h2 className="text-3xl font-bold text-slate-900 sm:text-4xl">Choose Your Crop</h2>
+            <p className="mt-3 text-slate-500 text-lg">
+              Every program is built by ICC agronomists using products available in our store.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+            {CROPS.map((crop) => (
+              <div
+                key={crop.slug}
+                className={`group relative overflow-hidden rounded-2xl border-2 p-7 transition-all hover:shadow-xl hover:-translate-y-0.5 ${crop.cardBg}`}
+              >
+                <div
+                  className={`absolute -right-8 -top-8 h-32 w-32 rounded-full bg-gradient-to-br ${crop.gradient} opacity-10 blur-2xl`}
+                />
+                <div className="relative">
+                  <div className="mb-4 flex items-start justify-between">
+                    <div className="rounded-2xl bg-white/80 p-3 shadow-sm">
+                      {crop.icon}
+                    </div>
+                    <span className={`rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide ${crop.badgeColor}`}>
+                      {crop.label}
+                    </span>
+                  </div>
+                  <h3 className="mb-2 text-2xl font-extrabold text-slate-900">{crop.label} Program</h3>
+                  <p className="mb-6 text-sm text-slate-600 leading-relaxed">{crop.tagline}</p>
+                  <Link
+                    href={`/auth/sign-in?callbackUrl=/shop/acre-pack/${crop.slug}`}
+                    className={`inline-flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-bold transition-colors hover:cursor-pointer ${crop.btnClass}`}
+                  >
+                    Build {crop.label} Pack
+                    <ChevronRight className="h-4 w-4" />
+                  </Link>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Agronomist CTA */}
+      <section className="border-t border-border/40 bg-gradient-to-br from-emerald-950 to-emerald-900 py-16 text-white">
+        <div className="mx-auto max-w-3xl px-4 text-center sm:px-6 lg:px-8">
+          <div className="mb-4 flex justify-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-700/60">
+              <Users className="h-7 w-7 text-emerald-300" />
+            </div>
+          </div>
+          <h2 className="mb-3 text-2xl font-bold sm:text-3xl">Not sure where to start?</h2>
+          <p className="mb-8 text-emerald-100/80 text-lg">
+            Our agronomists can build a custom program tailored to your operation, soil type, and
+            yield goals — at no extra cost.
+          </p>
+          <Button
+            asChild
+            size="lg"
+            className="bg-white text-emerald-900 hover:bg-emerald-50 font-bold px-10 text-base hover:cursor-pointer"
+          >
+            <Link href="/contact">Talk to an Agronomist</Link>
+          </Button>
+        </div>
+      </section>
     </div>
   );
 }

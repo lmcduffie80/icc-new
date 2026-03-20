@@ -79,7 +79,7 @@ export default async function AcrePackCropPage(
               Shop
             </Link>
             <span>/</span>
-            <Link href="/shop/acre-pack" className="hover:text-foreground transition-colors">
+            <Link href="/crop" className="hover:text-foreground transition-colors">
               Crop Planning
             </Link>
             <span>/</span>
@@ -92,7 +92,7 @@ export default async function AcrePackCropPage(
       <div className="bg-gradient-to-br from-emerald-900 to-green-800 py-10 text-white">
         <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
           <Link
-            href="/shop/acre-pack"
+            href="/crop"
             className="mb-4 inline-flex items-center gap-1 text-sm text-emerald-200 hover:text-white transition-colors"
           >
             <ChevronLeft className="h-4 w-4" />

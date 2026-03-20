@@ -660,7 +660,7 @@ export function AcrePackManager() {
       {/* Preview link */}
       <div className="flex justify-end">
         <Button variant="outline" size="sm" asChild>
-          <Link href="/shop/acre-pack" target="_blank">
+          <Link href="/crop" target="_blank">
             <ExternalLink className="mr-1.5 h-4 w-4" />
             Preview Crop Planning
           </Link>
