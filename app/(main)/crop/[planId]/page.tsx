@@ -234,7 +234,7 @@ export default function CropPlanDetailPage() {
       id: product.product_id,
       name: product.current_product_name || product.product_name,
       price,
-      image: product.image ?? '',
+      image: product.image || labelUrl || '',
       quantity: qty,
       inStock: product.in_stock,
       unitOfMeasure: product.unit_of_measure,
