@@ -40,6 +40,7 @@ interface PlanProduct {
   current_product_name: string;
   current_price: string | null;
   unit_of_measure: string | null;
+  image: string | null;
   in_stock: boolean;
   truckload_eligible?: boolean;
   cases_per_pallet?: number | null;
@@ -223,7 +224,7 @@ export default function CropPlanDetailPage() {
       id: product.product_id,
       name: product.current_product_name || product.product_name,
       price,
-      image: '',
+      image: product.image ?? '',
       quantity: qty,
       inStock: product.in_stock,
       unitOfMeasure: product.unit_of_measure,
