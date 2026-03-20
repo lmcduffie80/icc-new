@@ -1,0 +1,61 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnpm-store
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# playwright
+/playwright-report/
+/test-results/
+/e2e/.auth/
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+.eslintcache
+*.pem
+
+# macOS Icon files (cause Git corruption)
+Icon
+Icon?
+**/Icon
+**/Icon?
+
+# macOS file copy artifacts (e.g., "file 2.tsx", "file 3.ts")
+* [0-9]*.*
+* [0-9]*
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files (can opt-in for committing if needed)
+.env*
+
+# python virtual environments
+shipboss_env/
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts

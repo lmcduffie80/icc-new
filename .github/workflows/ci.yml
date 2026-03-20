@@ -1,0 +1,176 @@
+name: CI
+
+on:
+  push:
+    branches: [main, preview]
+  pull_request:
+    branches: [main, preview]
+
+jobs:
+  build:
+    name: Build & Test
+    runs-on: ubuntu-latest
+
+    # Skip duplicate runs on PR from same repo
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Type check
+        run: pnpm exec tsc --noEmit
+
+      - name: Run unit tests
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
+          BETTER_AUTH_URL: ${{ secrets.BETTER_AUTH_URL }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_S3_BUCKET_NAME: ${{ secrets.AWS_S3_BUCKET_NAME }}
+          UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
+          UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
+          ADMIN_SECRET: ${{ secrets.ADMIN_SECRET }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+          NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY }}
+
+  e2e:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    needs: build
+
+    # Only run when RUN_E2E_TESTS repo variable is set to 'true' (requires TEST_DATABASE_URL secret)
+    if: |
+      (github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository) &&
+      vars.RUN_E2E_TESTS == 'true'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Create test environment file
+        run: |
+          echo "DATABASE_URL=${{ secrets.TEST_DATABASE_URL }}" > .env.test
+          echo "BETTER_AUTH_SECRET=${{ secrets.BETTER_AUTH_SECRET }}" >> .env.test
+          echo "BETTER_AUTH_URL=http://localhost:3000" >> .env.test
+
+      - name: Run database migrations
+        run: pnpm db:migrate:test && pnpm db:migrate:test:orders
+        env:
+          DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
+
+      - name: Run E2E tests
+        run: pnpm test:e2e
+        env:
+          CI: true
+          DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
+          BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
+          BETTER_AUTH_URL: http://localhost:3000
+          ADMIN_IP_WHITELIST: '127.0.0.1,::1'
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_S3_BUCKET_NAME: ${{ secrets.AWS_S3_BUCKET_NAME }}
+          UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
+          UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+          NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          TEST_CUSTOMER_EMAIL: ${{ secrets.TEST_CUSTOMER_EMAIL || 'customer@test.com' }}
+          TEST_CUSTOMER_PASSWORD: ${{ secrets.TEST_CUSTOMER_PASSWORD || 'TestPassword123!' }}
+          TEST_ADMIN_EMAIL: ${{ secrets.TEST_ADMIN_EMAIL || 'admin@test.com' }}
+          TEST_ADMIN_PASSWORD: ${{ secrets.TEST_ADMIN_PASSWORD || 'AdminTestPassword123!' }}
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
+      - name: Upload test screenshots
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: test-screenshots
+          path: test-results/
+          retention-days: 7
+
+  pdfshift:
+    name: PDFShift Test
+    runs-on: ubuntu-latest
+    needs: build
+
+    # Only run if PDFSHIFT_API_KEY is set and not a duplicate run
+    if: |
+      (github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository) &&
+      vars.RUN_PDFSHIFT_TEST == 'true'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run PDFShift test
+        run: pnpm test:pdfshift
+        env:
+          PDFSHIFT_API_KEY: ${{ secrets.PDFSHIFT_API_KEY }}

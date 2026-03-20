@@ -1,0 +1,40 @@
+╔══════════════════════════════════════════════════════════════╗
+║         PRODUCTION FIX CHECKLIST - 5 MINUTES                 ║
+╚══════════════════════════════════════════════════════════════╝
+
+□ STEP 1: GET DATABASE_URL FROM VERCEL
+  └─ Go to: https://vercel.com/dashboard
+  └─ Click your project → Settings → Environment Variables
+  └─ Find DATABASE_URL
+  └─ Click "Show" and copy the ENTIRE URL
+  └─ It looks like: postgresql://username:password@host.neon.tech/db?sslmode=require
+
+□ STEP 2: UPDATE .env.production FILE
+  └─ Open file: .env.production
+  └─ Replace: DATABASE_URL=your_actual_url_here
+  └─ With your real URL from Vercel
+  └─ Save the file
+
+□ STEP 3: RUN MIGRATION
+  └─ In terminal, run: ./run-prod-migration.sh
+  └─ When asked, type: yes
+  └─ Wait for success message
+
+□ STEP 4: CLEAN UP
+  └─ Delete the file: rm .env.production
+
+□ STEP 5: TEST PRODUCTION
+  └─ Go to: https://innovativeagrecords.com/admin/products
+  └─ Page should load without errors
+  └─ Press Cmd+Shift+R to clear cache
+
+╔══════════════════════════════════════════════════════════════╗
+║  SUCCESS: Your production site should now be working! 🎉     ║
+╚══════════════════════════════════════════════════════════════╝
+
+TROUBLESHOOTING:
+  • "Invalid URL" = Make sure you copied the ENTIRE URL from Vercel
+  • "Already executed" = Good! Migration already ran. Test your site.
+  • "Command not found" = Run from project directory
+
+TIME ESTIMATE: 5 minutes

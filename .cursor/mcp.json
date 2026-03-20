@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "shipboss-mcp": {
+      "command": "/Users/donaldmcduffie/Documents/GitHub/ICC/icc-clean/shipboss_env/bin/python3.12",
+      "args": ["-m", "shipboss_mcp_server"],
+      "env": {
+        "SHIPBOSS_API_TOKEN": "117|YhEEi002mNJx3pRDiQRBaypKw13AJRsbYo2bfuGx"
+      }
+    }
+  }
+}

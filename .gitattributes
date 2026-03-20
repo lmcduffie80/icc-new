@@ -1,0 +1,2 @@
+# Prevent macOS Icon files from being tracked
+Icon? export-ignore

@@ -1,0 +1,653 @@
+# E-Commerce Platform - AI Assistant Guidelines
+
+This document provides guidelines for AI assistants working on this Next.js e-commerce platform. Follow these rules to maintain code quality, security best practices, and proper testing protocols.
+
+---
+
+## General Rules
+Be concise and pragmatic in your implementations
+Check your work — make sure what you implement works the way you think it should
+
+## 🚨 CRITICAL: Pre-Completion Requirements
+
+Before marking any feature or task as complete, you MUST:
+
+1. **Run Tests**: Execute `pnpm test` - all tests must pass
+2. **Build Validation**: Execute `pnpm run build` - build must succeed with no errors
+3. **Lint Check**: Execute `pnpm run lint` - fix all linting errors
+4. **Type Check**: Ensure no TypeScript errors remain
+
+**No exceptions.** These checks are non-negotiable for task completion.
+
+---
+
+## 🔐 Security-First Development
+
+This project implements enterprise-grade security. **Every change must maintain or enhance security.**
+
+### Required Security Practices
+
+1. **Input Validation**
+   - Always use Zod schemas from `lib/validation.ts`
+   - Create new schemas for new endpoints
+   - Validate on the server, never trust client data
+   - Example:
+   ```typescript
+   import { contactFormSchema } from '@/lib/validation';
+   const result = contactFormSchema.safeParse(body);
+   if (!result.success) {
+     return NextResponse.json({ error: 'Validation failed' }, { status: 400 });
+   }
+   ```
+
+2. **Rate Limiting**
+   - Apply to ALL public API routes using `lib/rate-limit.ts`
+   - Choose appropriate limiter:
+     - `rateLimiters.strict` - Auth endpoints (3 req/min)
+     - `rateLimiters.moderate` - Forms, orders (5 req/min)
+     - `rateLimiters.lenient` - Public reads (10 req/min)
+   - Example:
+   ```typescript
+   import { rateLimiters, checkRateLimit } from '@/lib/rate-limit';
+   const rateLimitResult = await checkRateLimit(request, rateLimiters.moderate);
+   if (!rateLimitResult.success) {
+     return createRateLimitResponse(rateLimitResult.reset);
+   }
+   ```
+
+3. **Security Logging**
+   - Log all security-relevant events using `lib/security-logger.ts`
+   - Log types: authentication, admin actions, suspicious activity
+   - Example:
+   ```typescript
+   import { securityLogger } from '@/lib/security-logger';
+   securityLogger.logAuthSuccess(userId, username, ip, userAgent);
+   securityLogger.logSuspiciousActivity('price_mismatch', ip, details);
+   ```
+
+4. **Admin Route Protection**
+   - Always use `verifyAdminAuth()` from `lib/admin-middleware.ts`
+   - Enforces IP whitelist, rate limiting, and authentication
+   - Example:
+   ```typescript
+   import { verifyAdminAuth } from '@/lib/admin-middleware';
+   const authResult = await verifyAdminAuth(request);
+   if (!authResult.authorized) {
+     return authResult.response!;
+   }
+   ```
+
+5. **Order Validation**
+   - Use `lib/order-validation.ts` for server-side price validation
+   - Never trust client-provided totals or prices
+   - Always recalculate on the server
+
+### Security Documentation
+
+- **Read First**: `SECURITY_QUICKSTART.md` - Quick patterns and examples
+- **Reference**: `SECURITY.md` - Comprehensive security guide
+- **Implementation**: `SECURITY_IMPLEMENTATION_SUMMARY.md` - What's implemented
+
+---
+
+## 🏗️ Code Organization & Architecture
+
+### Next.js App Router Structure
+
+- **App Directory**: `app/` - All routes and layouts
+  - `app/(main)/` - Public-facing pages
+  - `app/admin/` - Admin dashboard
+  - `app/api/` - API routes
+- **Components**: `components/` - Reusable React components
+- **Libraries**: `lib/` - Core utilities and business logic
+- **Tests**: `__tests__/` - Test files mirroring structure
+- **Migrations**: `migrations/` - Database migration files
+
+### TypeScript Standards
+
+- **Strict mode enabled** - No implicit any, strict null checks
+- **Use proper types** - Avoid `any`, use specific types or generics
+- **Type imports** - Use `import type` for type-only imports
+- **Return types** - Explicitly type function returns for public functions
+
+### API Route Pattern
+
+All API routes must follow this order:
+
+```typescript
+export async function POST(request: NextRequest) {
+  // 1. Validate input with Zod
+  const body = await request.json();
+  const result = schema.safeParse(body);
+  if (!result.success) {
+    return NextResponse.json({ error: 'Validation failed' }, { status: 400 });
+  }
+
+  // 2. Apply rate limiting
+  const rateLimitResult = await checkRateLimit(request, rateLimiters.moderate);
+  if (!rateLimitResult.success) {
+    return createRateLimitResponse(rateLimitResult.reset);
+  }
+
+  // 3. Authenticate (if required)
+  const session = await auth.api.getSession({ headers: request.headers });
+  if (!session) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  // 4. Process request
+  try {
+    // Business logic here
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    securityLogger.logError('Operation failed', error, ip);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}
+```
+
+### Component Guidelines
+
+- **Server Components by Default** - Use client components only when needed
+- **Client Components** - Add `'use client'` directive when using:
+  - State (useState, useReducer)
+  - Effects (useEffect)
+  - Event handlers
+  - Browser APIs
+  - Zustand stores (cart, compare)
+- **Styling** - Use Tailwind CSS utility classes
+- **Accessibility** - Include proper ARIA labels, keyboard navigation
+
+---
+
+## 🧪 Testing Requirements
+
+### When to Add Tests
+
+**Required for:**
+- ✅ New API routes - Add to `__tests__/api/`
+- ✅ New components - Add to `__tests__/components/`
+- ✅ New utility functions - Add to `__tests__/lib/`
+- ✅ Bug fixes - Add regression test
+
+### Test Structure
+
+Follow existing test patterns:
+
+```typescript
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+
+describe('Feature Name', () => {
+  beforeEach(() => {
+    // Setup
+  });
+
+  afterEach(() => {
+    // Cleanup
+  });
+
+  it('should handle success case', async () => {
+    // Arrange
+    const input = { /* test data */ };
+    
+    // Act
+    const result = await functionUnderTest(input);
+    
+    // Assert
+    expect(result).toBeDefined();
+    expect(result.status).toBe(200);
+  });
+
+  it('should handle error case', async () => {
+    // Test error scenarios
+  });
+});
+```
+
+### Test Commands
+
+- `pnpm test` - Run all tests (required before completion)
+- `pnpm run test:watch` - Watch mode during development
+- `pnpm run test:coverage` - Generate coverage report (for new features)
+
+### Test Files Reference
+
+- `__tests__/setup.ts` - Global test setup
+- `__tests__/api/helpers/` - Test helpers and mocks
+- `vitest.config.ts` - Test configuration
+
+---
+
+## 💾 Database Operations
+
+### Connection
+
+- Use `lib/db.ts` for all database operations
+- Connection pooling configured with limits and timeouts
+- Always use parameterized queries (SQL injection prevention)
+
+### Migrations
+
+**Before making database changes:**
+
+1. Create migration file in `migrations/` directory
+2. Follow naming pattern: `NNN_description.sql` (e.g., `014_add_user_roles.sql`)
+3. Include both UP and DOWN migrations
+4. Run: `pnpm run db:migrate:orders`
+
+**Better Auth Migrations:**
+
+For auth-related changes:
+- `pnpm run db:generate` - Generate migration
+- `pnpm run db:migrate` - Run Better Auth migrations
+
+### Query Best Practices
+
+```typescript
+// ✅ Good: Parameterized query
+const result = await sql`
+  SELECT * FROM users WHERE id = ${userId}
+`;
+
+// ❌ Bad: String concatenation (SQL injection risk)
+const result = await sql`
+  SELECT * FROM users WHERE id = '${userId}'
+`;
+```
+
+---
+
+## 📦 File Upload & S3
+
+### S3 Operations
+
+- **Always use** `lib/s3.ts` for file operations
+- Includes proper error handling and security measures
+
+### File Validation
+
+**Required checks:**
+- File size: Maximum 5MB
+- File types: JPEG, PNG, WebP, GIF only
+- Image optimization: Use Sharp for processing
+
+Example:
+
+```typescript
+import { validateFileUpload, uploadToS3, optimizeImage } from '@/lib/s3';
+
+// Validate
+const validation = validateFileUpload(fileName, contentType, size);
+if (!validation.valid) {
+  return NextResponse.json({ error: validation.error }, { status: 400 });
+}
+
+// Optimize (for images)
+const optimized = await optimizeImage(buffer);
+
+// Upload
+const url = await uploadToS3(buffer, fileName, contentType);
+```
+
+---
+
+## 🔧 Code Quality Standards
+
+### Linting
+
+- **Run before commit**: `pnpm run lint`
+- Fix all errors - no warnings in production code
+- Follow existing ESLint configuration (`eslint.config.mjs`)
+
+### Error Handling
+
+**Always use try-catch for:**
+- Database operations
+- External API calls
+- File operations
+- Any async operation that can fail
+
+```typescript
+try {
+  const result = await databaseOperation();
+  return NextResponse.json({ data: result });
+} catch (error) {
+  securityLogger.logError('Operation failed', error, ip);
+  return NextResponse.json(
+    { error: 'Internal server error' },
+    { status: 500 }
+  );
+}
+```
+
+### HTTP Status Codes
+
+Use appropriate status codes:
+- `200` - Success
+- `201` - Created
+- `400` - Bad request (validation failed)
+- `401` - Unauthorized (not authenticated)
+- `403` - Forbidden (authenticated but not authorized)
+- `404` - Not found
+- `429` - Too many requests (rate limit exceeded)
+- `500` - Internal server error
+
+---
+
+## 🌍 Environment Variables
+
+### Validation
+
+- **Check** `lib/env-validation.ts` for required variables
+- Validate env vars at startup
+- Never commit `.env.local` (already in .gitignore)
+
+### Documentation
+
+When adding new environment variables:
+1. Add to `lib/env-validation.ts`
+2. Document in `README.md`
+3. Add to `SECURITY_QUICKSTART.md` if security-related
+4. Provide example in documentation
+
+---
+
+## 📦 Package Manager Guidelines
+
+### pnpm Only
+
+This project uses **pnpm exclusively**. Never use npm or yarn commands.
+
+**Why pnpm?**
+- Faster installation and updates
+- Efficient disk space usage (content-addressable store)
+- Strict dependency resolution
+- Native monorepo/workspace support
+
+### Commands
+
+**Installation:**
+```bash
+pnpm install              # Install all dependencies
+pnpm add <package>        # Add dependency
+pnpm add -D <package>     # Add dev dependency
+pnpm remove <package>     # Remove dependency
+pnpm update <package>     # Update specific package
+```
+
+**Scripts:**
+```bash
+pnpm dev                  # Start development server
+pnpm build                # Build for production
+pnpm test                 # Run tests
+pnpm lint                 # Run linter
+```
+
+### Lock File Management
+
+- **Always commit** `pnpm-lock.yaml` with dependency changes
+- **Never commit** `package-lock.json` or `yarn.lock`
+- **Frozen lockfile**: Vercel uses `pnpm install --frozen-lockfile` for builds
+
+### Vercel Deployment
+
+The `packageManager` field in `package.json` tells Vercel to use pnpm:
+```json
+"packageManager": "pnpm@9.0.0"
+```
+
+This ensures consistent behavior between local development and production builds.
+
+---
+
+## 📚 Documentation Requirements
+
+### When to Update Documentation
+
+- **README.md** - Major features, setup changes, new dependencies
+- **SECURITY.md** - Security features, auth changes, new vulnerabilities
+- **JSDoc Comments** - Complex functions, public APIs, utilities
+
+### JSDoc Format
+
+```typescript
+/**
+ * Validates and processes user order
+ * @param orderId - The unique order identifier
+ * @param userId - The authenticated user's ID
+ * @returns Promise resolving to order details
+ * @throws {Error} If order validation fails
+ */
+async function processOrder(orderId: string, userId: string): Promise<Order> {
+  // Implementation
+}
+```
+
+---
+
+## ✅ Pre-Completion Checklist
+
+Before marking any task complete, verify:
+
+```bash
+# 1. Lint check
+pnpm run lint
+
+# 2. Run all tests
+pnpm test
+
+# 3. Build validation
+pnpm run build
+
+# 4. Security audit (for dependency changes)
+pnpm audit
+
+# 5. Type check (should be covered by build)
+npx tsc --noEmit
+
+# 6. Verify no conflicting lock files
+# Ensure package-lock.json and yarn.lock do not exist
+ls package-lock.json yarn.lock 2>/dev/null && echo "ERROR: Remove conflicting lock files" || echo "✓ No conflicting lock files"
+
+# 7. Verify pnpm-lock.yaml is up to date
+git diff --exit-code pnpm-lock.yaml || echo "⚠️  pnpm-lock.yaml has changes - commit it"
+```
+
+**All must pass.** If any fail, fix issues before proceeding.
+
+---
+
+## 🎯 Common Patterns
+
+### Admin Routes
+
+```typescript
+import { verifyAdminAuth } from '@/lib/admin-middleware';
+
+export async function POST(request: NextRequest) {
+  const authResult = await verifyAdminAuth(request);
+  if (!authResult.authorized) {
+    return authResult.response!;
+  }
+  // Admin is authenticated and authorized
+}
+```
+
+### Public API Routes
+
+```typescript
+import { rateLimiters, checkRateLimit, createRateLimitResponse } from '@/lib/rate-limit';
+import { contactFormSchema } from '@/lib/validation';
+
+export async function POST(request: NextRequest) {
+  // Validate
+  const body = await request.json();
+  const result = contactFormSchema.safeParse(body);
+  if (!result.success) {
+    return NextResponse.json({ error: 'Validation failed' }, { status: 400 });
+  }
+
+  // Rate limit
+  const rateLimitResult = await checkRateLimit(request, rateLimiters.moderate);
+  if (!rateLimitResult.success) {
+    return createRateLimitResponse(rateLimitResult.reset);
+  }
+
+  // Process
+  // ...
+}
+```
+
+### Form Validation
+
+```typescript
+// 1. Create schema in lib/validation.ts
+export const myFormSchema = z.object({
+  field: z.string().min(1).max(100),
+  email: z.string().email(),
+});
+
+// 2. Use in API route
+const result = myFormSchema.safeParse(body);
+```
+
+### New Components with Tests
+
+```typescript
+// components/my-component.tsx
+export function MyComponent({ prop }: MyComponentProps) {
+  // Implementation
+}
+
+// __tests__/components/my-component.test.tsx
+import { render, screen } from '@testing-library/react';
+import { MyComponent } from '@/components/my-component';
+
+describe('MyComponent', () => {
+  it('should render correctly', () => {
+    render(<MyComponent prop="value" />);
+    expect(screen.getByText('value')).toBeInTheDocument();
+  });
+});
+```
+
+---
+
+## ❌ Anti-Patterns to Avoid
+
+**Never do these:**
+
+- ❌ Skip validation on API routes
+- ❌ Trust client-provided prices, totals, or sensitive data
+- ❌ Expose sensitive data in API responses (passwords, tokens, internal IDs)
+- ❌ Create admin routes without `verifyAdminAuth()`
+- ❌ Commit code without running tests and build
+- ❌ Use `any` type without strong justification
+- ❌ Concatenate user input into SQL queries
+- ❌ Skip rate limiting on public endpoints
+- ❌ Log sensitive data (passwords, tokens, credit cards)
+- ❌ Return detailed error messages to clients (expose internal details)
+- ❌ Commit `.env.local` or secrets
+- ❌ Use npm or yarn instead of pnpm
+- ❌ Mix package managers or have multiple lock files
+- ❌ Commit `package-lock.json` or `yarn.lock` files
+
+---
+
+## 📖 Key Files Reference
+
+### Security & Validation
+- `lib/validation.ts` - Zod validation schemas
+- `lib/rate-limit.ts` - Rate limiting configuration
+- `lib/security-logger.ts` - Security event logging
+- `lib/admin-middleware.ts` - Admin authentication & authorization
+- `lib/order-validation.ts` - Server-side order validation
+- `lib/env-validation.ts` - Environment variable validation
+
+### Core Libraries
+- `lib/db.ts` - Database connection
+- `lib/auth.ts` - Better Auth configuration
+- `lib/s3.ts` - AWS S3 operations
+- `lib/utils.ts` - General utilities
+
+### Configuration
+- `package.json` - Scripts and dependencies
+- `vitest.config.ts` - Test configuration
+- `next.config.ts` - Next.js configuration
+- `eslint.config.mjs` - Linting rules
+- `tsconfig.json` - TypeScript configuration
+
+### Documentation
+- `README.md` - Project overview and setup
+- `SECURITY.md` - Comprehensive security guide
+- `SECURITY_QUICKSTART.md` - Quick security patterns
+- `SECURITY_IMPLEMENTATION_SUMMARY.md` - Implementation details
+- `TEST_COVERAGE_SUMMARY.md` - Test coverage report
+
+---
+
+## 🚀 Development Workflow
+
+### Starting a New Feature
+
+1. **Understand requirements** - Read related docs, check existing patterns
+2. **Check current state** - Run tests and build to ensure clean start
+3. **Read security docs** - If touching auth, orders, or admin features
+4. **Implement with tests** - Write tests alongside code
+5. **Validate security** - Apply validation, rate limiting, logging
+6. **Run checklist** - Lint, test, build before completion
+
+### Debugging Issues
+
+1. **Check security logs** - `tail -f logs/security-combined.log`
+2. **Check browser console** - For client-side errors
+3. **Check server logs** - In terminal running dev server
+4. **Run tests** - Identify failing tests
+5. **Check linter** - May reveal type or syntax issues
+
+---
+
+## 💡 Additional Guidelines
+
+### State Management
+
+- **Zustand stores** - Cart (`lib/cart-store.ts`), Compare (`lib/compare-store.ts`)
+- **Server state** - Fetch in server components, pass to client as needed
+- **Form state** - Use controlled components or form libraries
+
+### Performance
+
+- **Image optimization** - Use Next.js Image component, Sharp for processing
+- **Code splitting** - Dynamic imports for heavy components
+- **Database queries** - Optimize with proper indexes, limit results
+- **Caching** - Use Next.js caching, Redis for rate limiting
+
+### Accessibility
+
+- **Semantic HTML** - Use proper elements (button, nav, main, etc.)
+- **ARIA labels** - For dynamic content and interactive elements
+- **Keyboard navigation** - Ensure all functionality is keyboard accessible
+- **Focus management** - Handle focus for modals, overlays
+
+---
+
+## 🎓 Learning Resources
+
+### Project-Specific
+- Review existing API routes in `app/api/` for patterns
+- Check test files in `__tests__/` for testing examples
+- Read security documentation for security patterns
+
+### External Resources
+- **Next.js**: https://nextjs.org/docs
+- **Better Auth**: https://better-auth.com/docs
+- **Zod**: https://zod.dev
+- **Vitest**: https://vitest.dev
+- **Tailwind CSS**: https://tailwindcss.com/docs
+
+---
+
+**Remember: Security first, test always, build before complete.**
+
+This is a production-grade e-commerce platform with real security implications. Every change matters. Take your time, follow the patterns, and maintain the high standards established in this codebase.
+

@@ -1,0 +1,50 @@
+# Gitleaks configuration for ICC e-commerce project
+# https://github.com/gitleaks/gitleaks
+
+title = "ICC Gitleaks Config"
+
+# Extend the default rules
+[extend]
+useDefault = true
+
+# Paths to ignore (not checked for secrets)
+# Note: These are regex patterns, not glob patterns
+[allowlist]
+paths = [
+    # Lockfiles contain hashes, not secrets
+    '''pnpm-lock\.yaml''',
+    '''package-lock\.json''',
+    '''yarn\.lock''',
+
+    # Test files may contain mock data
+    '''__tests__/.*''',
+    '''.*\.test\.ts''',
+    '''.*\.test\.tsx''',
+
+    # Build artifacts
+    '''\.next/.*''',
+    '''node_modules/.*''',
+    '''coverage/.*''',
+
+    # Documentation with example keys
+    '''.*\.md''',
+
+    # This config file
+    '''\.gitleaks\.toml'''
+]
+
+# Specific strings to ignore (false positives)
+regexes = [
+    # Example/placeholder values
+    '''sk_test_.*example.*''',
+    '''pk_test_.*example.*''',
+    '''EXAMPLE_.*''',
+    '''your-.*-here''',
+    '''placeholder''',
+
+    # Common false positives in Next.js
+    '''NEXT_PUBLIC_.*'''
+]
+
+# Commits to ignore (if you know they're safe)
+# commits = ["abc123"]

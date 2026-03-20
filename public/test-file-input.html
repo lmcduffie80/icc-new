@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>File Input Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .test-box {
+            border: 4px solid red;
+            padding: 20px;
+            margin: 20px 0;
+            background: #ffe;
+        }
+        input[type="file"] {
+            border: 2px solid blue;
+            padding: 10px;
+            background: lightblue;
+            font-size: 16px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔴 File Input Diagnostic Test</h1>
+    
+    <div class="test-box">
+        <h2>Test 1: Basic File Input</h2>
+        <input type="file" id="test1" />
+        <p>Click the blue box above. Does the file picker open?</p>
+    </div>
+
+    <div class="test-box">
+        <h2>Test 2: File Input with Label</h2>
+        <label for="test2" style="display: block; background: lightgreen; padding: 20px; cursor: pointer; border: 2px solid green;">
+            Click this GREEN BOX to upload
+        </label>
+        <input type="file" id="test2" style="display: none;" />
+    </div>
+
+    <div class="test-box">
+        <h2>Test 3: Button Click</h2>
+        <button onclick="document.getElementById('test3').click()" style="padding: 20px; background: orange; border: 2px solid darkorange;">
+            Click this ORANGE BUTTON
+        </button>
+        <input type="file" id="test3" style="display: none;" />
+    </div>
+
+    <div class="test-box">
+        <h2>Results</h2>
+        <ul>
+            <li><strong>Test 1 works:</strong> Basic input is functional</li>
+            <li><strong>Test 2 works:</strong> Label method is functional</li>
+            <li><strong>Test 3 works:</strong> Programmatic click is functional</li>
+            <li><strong>NONE work:</strong> Browser/system is blocking file inputs</li>
+        </ul>
+    </div>
+
+    <script>
+        document.getElementById('test1').addEventListener('change', (e) => {
+            alert('Test 1: File selected! ' + e.target.files[0]?.name);
+        });
+        document.getElementById('test2').addEventListener('change', (e) => {
+            alert('Test 2: File selected! ' + e.target.files[0]?.name);
+        });
+        document.getElementById('test3').addEventListener('change', (e) => {
+            alert('Test 3: File selected! ' + e.target.files[0]?.name);
+        });
+    </script>
+</body>
+</html>
+

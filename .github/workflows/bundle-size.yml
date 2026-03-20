@@ -1,0 +1,58 @@
+name: Bundle Size
+
+on:
+  pull_request:
+    branches: [main, preview]
+
+jobs:
+  bundle-size:
+    name: Check Bundle Size
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Analyze bundle size
+        run: |
+          echo "## Bundle Size Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Total .next size
+          TOTAL_SIZE=$(du -sh .next | cut -f1)
+          echo "**Total Build Size:** $TOTAL_SIZE" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Static chunks breakdown
+          echo "### Largest JavaScript Chunks" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          if [ -d ".next/static/chunks" ]; then
+            du -sh .next/static/chunks/*.js 2>/dev/null | sort -rh | head -10 >> $GITHUB_STEP_SUMMARY || echo "No JS chunks found" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+
+          # Pages breakdown
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Page Sizes" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          if [ -d ".next/server/app" ]; then
+            find .next/server/app -name "*.js" -exec du -sh {} \; 2>/dev/null | sort -rh | head -10 >> $GITHUB_STEP_SUMMARY || echo "No page files found" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY

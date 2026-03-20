@@ -1,0 +1,27 @@
+name: Semgrep Security Scan
+
+on:
+  push:
+    branches: [main, preview]
+  pull_request:
+    branches: [main, preview]
+
+jobs:
+  semgrep:
+    name: Security Scan
+    runs-on: ubuntu-latest
+
+    # Skip duplicate runs on PR from same repo
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Semgrep
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: >-
+            p/security-audit
+            p/nextjs
+            p/typescript

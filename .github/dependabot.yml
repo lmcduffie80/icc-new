@@ -1,0 +1,58 @@
+# Dependabot configuration
+# https://docs.github.com/en/code-security/dependabot/dependabot-version-updates
+
+version: 2
+updates:
+  # JavaScript/Node.js dependencies (pnpm)
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 10
+    # Group minor and patch updates to reduce PR noise
+    groups:
+      production-dependencies:
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "@types/*"
+          - "eslint*"
+          - "prettier"
+          - "vitest"
+          - "@testing-library/*"
+        update-types:
+          - "minor"
+          - "patch"
+      dev-dependencies:
+        patterns:
+          - "@types/*"
+          - "eslint*"
+          - "prettier"
+          - "vitest"
+          - "@testing-library/*"
+        update-types:
+          - "minor"
+          - "patch"
+    # Security updates get priority
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "deps"
+    # Reviewers for dependency PRs (optional - add your GitHub username)
+    # reviewers:
+    #   - "your-username"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels:
+      - "dependencies"
+      - "github-actions"
+    commit-message:
+      prefix: "ci"

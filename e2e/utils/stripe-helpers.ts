@@ -1,0 +1,50 @@
+/**
+ * Stripe Test Card Numbers
+ * https://docs.stripe.com/testing
+ */
+export const STRIPE_TEST_CARDS = {
+  // Successful payments
+  VISA: '4242424242424242',
+  VISA_DEBIT: '4000056655665556',
+  MASTERCARD: '5555555555554444',
+  MASTERCARD_DEBIT: '5200828282828210',
+  AMEX: '378282246310005',
+
+  // Authentication required
+  REQUIRES_AUTHENTICATION: '4000002500003155',
+  REQUIRES_AUTHENTICATION_SETUP: '4000002760003184',
+
+  // Declined cards
+  DECLINED: '4000000000000002',
+  DECLINED_INSUFFICIENT_FUNDS: '4000000000009995',
+  DECLINED_LOST_CARD: '4000000000009987',
+  DECLINED_STOLEN_CARD: '4000000000009979',
+  DECLINED_EXPIRED_CARD: '4000000000000069',
+  DECLINED_CVC_CHECK: '4000000000000127',
+
+  // International cards
+  AUSTRALIA: '4000000360000006',
+  BRAZIL: '4000000760000002',
+  CANADA: '4000001240000000',
+  FRANCE: '4000002500000003',
+  GERMANY: '4000002760000016',
+  UK: '4000008260000000',
+};
+
+/**
+ * Standard test expiry and CVC
+ */
+export const STRIPE_TEST_EXPIRY = '12/28';
+export const STRIPE_TEST_CVC = '123';
+export const STRIPE_TEST_CVC_AMEX = '1234';
+
+/**
+ * Get card details for testing
+ */
+export function getTestCardDetails(cardType: keyof typeof STRIPE_TEST_CARDS = 'VISA') {
+  return {
+    number: STRIPE_TEST_CARDS[cardType],
+    expiry: STRIPE_TEST_EXPIRY,
+    cvc: cardType === 'AMEX' ? STRIPE_TEST_CVC_AMEX : STRIPE_TEST_CVC,
+  };
+}
