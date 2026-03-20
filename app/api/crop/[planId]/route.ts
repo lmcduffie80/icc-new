@@ -95,7 +95,8 @@ export async function GET(
                   p.name as current_product_name, p.price as current_price,
                   p.unit_of_measure, p.image, p.in_stock, p.approved_states,
                   p.truckload_eligible,
-                  p.gallons_per_case, p.cases_per_pallet, p.bulk_density_lbs_per_gallon
+                  p.gallons_per_case, p.cases_per_pallet, p.bulk_density_lbs_per_gallon,
+                  p.label_url, p.admin_label_url, p.restricted_use
            FROM farmer_plan_products fpp
            LEFT JOIN products p ON p.id = fpp.product_id
            WHERE fpp.plan_pass_id = $1

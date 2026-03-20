@@ -46,6 +46,9 @@ interface PlanProduct {
   cases_per_pallet?: number | null;
   bulk_density_lbs_per_gallon?: number | null;
   gallons_per_case?: number | null;
+  label_url?: string | null;
+  admin_label_url?: string | null;
+  restricted_use?: boolean;
 }
 
 interface PlanPass {
@@ -220,6 +223,7 @@ export default function CropPlanDetailPage() {
   const addProductToCart = useCallback((product: PlanProduct) => {
     const qty = product.units_needed ? Math.ceil(parseFloat(product.units_needed)) : 1;
     const price = product.current_price ?? product.unit_cost ?? '0';
+    const labelUrl = product.admin_label_url || product.label_url || null;
     addItem({
       id: product.product_id,
       name: product.current_product_name || product.product_name,
@@ -232,6 +236,8 @@ export default function CropPlanDetailPage() {
       casesPerPallet: product.cases_per_pallet,
       bulkDensityLbsPerGallon: product.bulk_density_lbs_per_gallon,
       gallonsPerCase: product.gallons_per_case,
+      labelUrl,
+      restrictedUse: product.restricted_use,
     });
     setAddedIds((prev) => {
       const next = new Set(prev);
