@@ -90,7 +90,7 @@
     "eslint-plugin-jsx-a11y": "^6.10.2",
     "happy-dom": "^20.6.0",
     "jest-axe": "^10.0.0",
-    "jsdom": "^27.4.0",
+    "jsdom": "^29.0.1",
     "node-mocks-http": "^1.17.2",
     "oxlint": "^1.48.0",
     "prettier": "^3.7.4",
