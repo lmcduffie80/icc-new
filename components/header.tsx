@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { Menu, Search, ShoppingCart, X, User, LogOut } from 'lucide-react';
@@ -23,9 +23,14 @@ export function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const { user } = useAuth();
   const { getTotalItems } = useCartStore();
   const totalItems = getTotalItems();
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useSearchShortcut(() => setSearchOpen(true));
 
@@ -74,7 +79,7 @@ export function Header() {
                 className="relative rounded-md p-2 text-muted-foreground transition-colors hover:cursor-pointer hover:text-foreground"
               >
                 <ShoppingCart className="h-5 w-5" />
-                {totalItems > 0 && (
+                {mounted && totalItems > 0 && (
                   <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-medium text-primary-foreground">
                     {totalItems}
                   </span>
