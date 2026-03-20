@@ -33,6 +33,8 @@ type Product = {
   original_price: string | null;
   unit_of_measure: string | null;
   image: string | null;
+  label_url: string | null;
+  admin_label_url: string | null;
   in_stock: boolean;
   sku: string | null;
   rating: string | null;
@@ -185,11 +187,12 @@ export default function ComparePage() {
   const maxDocuments = Math.max(...products.map((p) => (p.documents || []).length));
 
   const handleAddToCart = (product: Product) => {
+    const labelUrl = product.admin_label_url || product.label_url || null;
     addItem({
       id: product.id,
       name: product.name,
       price: product.price,
-      image: product.image || '',
+      image: product.image || labelUrl || '',
       inStock: product.in_stock,
       unitOfMeasure: product.unit_of_measure,
       truckloadEligible: product.truckload_eligible,
