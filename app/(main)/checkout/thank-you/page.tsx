@@ -316,6 +316,10 @@ function ThankYouContent() {
                       fill
                       className="object-cover"
                       unoptimized={true}
+                      onError={(e) => {
+                        const target = e.currentTarget;
+                        target.src = '/placeholder.png';
+                      }}
                     />
                   </div>
                   <div className="flex-1 min-w-0">

@@ -72,7 +72,7 @@ export async function validateOrder(
     try {
       // Fetch product from database
       const result = await db.query(
-        `SELECT id, name, price, unit_of_measure, inventory_count as inventory, in_stock as is_active, approved_states, restricted_use, next_available_quantity, next_available_date, minimum_order_qty
+        `SELECT id, name, price, unit_of_measure, inventory_count as inventory, in_stock as is_active, approved_states, restricted_use, next_available_quantity, next_available_date, minimum_order_qty, image, label_url, admin_label_url
          FROM products
          WHERE id = $1`,
         [item.productId]
@@ -155,8 +155,12 @@ export async function validateOrder(
       const itemTotal = actualPrice * item.quantity;
       serverTotal += itemTotal;
 
+      // Use DB image as fallback when cart doesn't have an image
+      const productImage = item.image?.trim() || product.image || product.admin_label_url || product.label_url || undefined;
+
       validatedItems.push({
         ...item,
+        image: productImage,
         actualPrice,
         priceMatch,
         inventory: product.inventory,

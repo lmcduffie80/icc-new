@@ -171,7 +171,7 @@ export function ProductDetailContent({
       id: product.id,
       name: product.name,
       price: product.price,
-      image: product.image,
+      image: product.image || labelUrl || '',
       inStock: product.inStock,
       approvedStates: product.approvedStates,
       unitOfMeasure: product.unitOfMeasure,

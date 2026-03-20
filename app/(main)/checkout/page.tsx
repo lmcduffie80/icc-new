@@ -548,7 +548,7 @@ export default function CheckoutPage() {
   const [isFetchingTruckloadRates, setIsFetchingTruckloadRates] = useState(false);
   const [truckloadRateError, setTruckloadRateError] = useState<string | null>(null);
   const [truckloadRatesFetched, setTruckloadRatesFetched] = useState(false);
-  const [truckloadMinTotes, setTruckloadMinTotes] = useState<number>(15);
+  const [truckloadMinTotes, setTruckloadMinTotes] = useState<number>(14);
   const [truckloadEnabled, setTruckloadEnabled] = useState<boolean>(false);
   const [truckloadMinPallets, setTruckloadMinPallets] = useState<number>(22);
   const [truckloadMaxWeightLbs, setTruckloadMaxWeightLbs] = useState<number>(44000);
@@ -568,27 +568,39 @@ export default function CheckoutPage() {
   const subtotal = Math.round(getSubtotal() * 100) / 100;
 
   // Determine if this order qualifies for truckload shipping.
-  // Uses the explicit truckload_eligible product flag as primary signal,
-  // with UOM/name string matching as fallback for products not yet flagged.
+  // Tote threshold is evaluated against the TOTAL tote quantity across all cart items,
+  // not per-item, so e.g. 7 + 7 totes correctly triggers TL at a min of 14.
+  // Case goods use per-item pallet/weight thresholds (a single SKU fills a truck).
   const isTruckloadOrder = useMemo(() => {
     if (!truckloadEnabled) return false;
-    return items.some((item) => {
-      // Case goods path: pallet count or total weight threshold
+
+    // Case goods path: any single item that hits the pallet or weight threshold
+    const caseGoodsTL = items.some((item) => {
       if (item.truckloadEligible && item.casesPerPallet && item.gallonsPerCase && item.bulkDensityLbsPerGallon) {
         const lbsPerCase = item.gallonsPerCase * item.bulkDensityLbsPerGallon;
         const totalWeightLbs = item.quantity * lbsPerCase;
         const pallets = Math.ceil(item.quantity / item.casesPerPallet);
         if (pallets >= truckloadMinPallets || totalWeightLbs >= truckloadMaxWeightLbs) return true;
       }
-      // Tote/bulk path: explicit flag set in Admin on the product
-      if (item.truckloadEligible && item.quantity >= truckloadMinTotes) return true;
-      // Fallback: legacy string matching for products not yet flagged
+      return false;
+    });
+    if (caseGoodsTL) return true;
+
+    // Tote/bulk path: sum total totes across all eligible items
+    const isToteItem = (item: (typeof items)[number]) => {
+      if (item.truckloadEligible) return true;
+      // Fallback: legacy string matching for products not yet flagged in Admin
       const name = item.name?.toLowerCase() ?? '';
       const uom = item.unitOfMeasure?.toLowerCase() ?? '';
-      const isGlyphosate = name.includes('glyphosate');
       const isTote = uom.includes('tote') || uom.includes('tank') || name.includes('tote');
-      return isGlyphosate && isTote && item.quantity >= truckloadMinTotes;
-    });
+      return isTote;
+    };
+
+    const totalToteQty = items.reduce((sum, item) => {
+      return isToteItem(item) ? sum + item.quantity : sum;
+    }, 0);
+
+    return totalToteQty >= truckloadMinTotes;
   }, [items, truckloadEnabled, truckloadMinTotes, truckloadMinPallets, truckloadMaxWeightLbs]);
 
   // Detect if any cart item is a restricted-use product
@@ -1999,6 +2011,10 @@ export default function CheckoutPage() {
                             fill 
                             className="object-cover"
                             unoptimized={true}
+                            onError={(e) => {
+                              const target = e.currentTarget;
+                              target.src = '/placeholder.png';
+                            }}
                           />
                         </div>
                         <div className="flex-1">
