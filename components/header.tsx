@@ -14,7 +14,6 @@ import { accountNavItems } from '@/lib/account-navigation';
 
 const navLinks = [
   { href: '/shop', label: 'Shop' },
-  { href: '/shop/acre-pack', label: 'Acre Pack' },
   { href: '/crop', label: 'Crop Planning' },
   { href: '/about', label: 'About' },
   { href: '/contact', label: 'Contact' },
