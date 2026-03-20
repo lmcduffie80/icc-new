@@ -233,8 +233,16 @@ function ProductLabelLink({ productId, fallbackUrl }: { productId: string; fallb
         // Also check direct label_url and admin_label_url fields (prefer admin_label_url)
         const directLabelUrl = product?.admin_label_url || product?.label_url;
         
-        // Use document URL if found, otherwise use direct URL
-        const url = labelDoc?.url || directLabelUrl;
+        // Also check if the product image itself is a label (filename contains 'label')
+        const imageIsLabel = product?.image && (
+          product.image.toLowerCase().includes('label') ||
+          product.image.toLowerCase().includes('_label') ||
+          product.image.toLowerCase().includes('-label')
+        );
+        const imageLabelUrl = imageIsLabel ? product.image : null;
+        
+        // Use document URL if found, otherwise direct label URL, otherwise image-as-label
+        const url = labelDoc?.url || directLabelUrl || imageLabelUrl;
         
         // Debug: log the full product structure to see what we're working with
         if (process.env.NODE_ENV === 'development') {
@@ -2024,7 +2032,7 @@ export default function CheckoutPage() {
                               )}
                             </div>
                           ) : (
-                            <ProductLabelLink productId={item.id} />
+                            <ProductLabelLink productId={item.id} fallbackUrl={item.labelUrl || undefined} />
                           )}
                         </div>
                       </div>

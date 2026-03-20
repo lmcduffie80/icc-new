@@ -223,7 +223,13 @@ export default function CropPlanDetailPage() {
   const addProductToCart = useCallback((product: PlanProduct) => {
     const qty = product.units_needed ? Math.ceil(parseFloat(product.units_needed)) : 1;
     const price = product.current_price ?? product.unit_cost ?? '0';
-    const labelUrl = product.admin_label_url || product.label_url || null;
+    // Use explicit label URLs first; fall back to product image if the filename contains 'label'
+    const imageIsLabel = product.image && (
+      product.image.toLowerCase().includes('label') ||
+      product.image.toLowerCase().includes('_label') ||
+      product.image.toLowerCase().includes('-label')
+    );
+    const labelUrl = product.admin_label_url || product.label_url || (imageIsLabel ? product.image : null);
     addItem({
       id: product.product_id,
       name: product.current_product_name || product.product_name,

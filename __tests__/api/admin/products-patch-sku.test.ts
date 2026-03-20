@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { PATCH } from '@/app/api/admin/products/[id]/route';
+import { PATCH } from '../../../app/api/admin/products/[id]/route';
 import { createPatchRequest, parseJsonResponse } from '../helpers/request-helpers';
 
 const { mockQuery, mockQueryOne, mockRequireAdmin, mockLogAction } = vi.hoisted(() => ({

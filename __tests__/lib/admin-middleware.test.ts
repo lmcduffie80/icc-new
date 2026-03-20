@@ -67,6 +67,7 @@ describe('Admin Middleware', () => {
         admin_email: 'admin@example.com',
         admin_name: 'Admin User',
         role_name: 'Super Admin',
+        permissions: [],
       };
 
       logAdminAction(
@@ -97,6 +98,7 @@ describe('Admin Middleware', () => {
         admin_email: 'another@example.com',
         admin_name: 'Another Admin',
         role_name: 'Editor',
+        permissions: [],
       };
 
       logAdminAction(session, 'delete_order', 'order-789', '192.168.1.1');
@@ -121,6 +123,7 @@ describe('Admin Middleware', () => {
         admin_email: 'admin@test.com',
         admin_name: 'Test Admin',
         role_name: 'Admin',
+        permissions: [],
       };
 
       const actions = [
