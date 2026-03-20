@@ -76,7 +76,7 @@ interface SettingsFormProps {
   canUpdateStoreInfo: boolean;
 }
 
-type ActiveTab = 'store_info' | 'shipping' | 'tax' | 'payment' | 'categories' | 'units_of_measure';
+type ActiveTab = 'store_info' | 'shipping' | 'tax' | 'payment' | 'categories' | 'units_of_measure' | 'truckload';
 
 const TABS: { id: ActiveTab; label: string }[] = [
   { id: 'store_info', label: 'Store Info' },
@@ -85,6 +85,7 @@ const TABS: { id: ActiveTab; label: string }[] = [
   { id: 'payment', label: 'Payment' },
   { id: 'categories', label: 'Categories' },
   { id: 'units_of_measure', label: 'Units of Measure' },
+  { id: 'truckload', label: 'Truckload' },
 ];
 
 export function SettingsForm({
@@ -148,6 +149,20 @@ export function SettingsForm({
   );
   const [newUnit, setNewUnit] = useState('');
 
+  // Truckload state
+  const [truckloadSettings, setTruckloadSettings] = useState<TruckloadSettings>({
+    enabled: settings.truckload?.enabled ?? false,
+    min_totes: settings.truckload?.min_totes ?? 14,
+    gallons_per_tote: settings.truckload?.gallons_per_tote ?? 265,
+    min_pallets: settings.truckload?.min_pallets ?? 22,
+    max_weight_lbs: settings.truckload?.max_weight_lbs ?? 44000,
+    rates: settings.truckload?.rates ?? [
+      { id: 'rate-350', label: '$3.50/mile', rate_per_mile: 3.50 },
+      { id: 'rate-400', label: '$4.00/mile', rate_per_mile: 4.00 },
+      { id: 'rate-500', label: '$5.00/mile', rate_per_mile: 5.00 },
+    ],
+  });
+
   const showFeedback = (success: boolean, message: string) => {
     if (success) {
       setSuccessMessage(message);
@@ -187,6 +202,30 @@ export function SettingsForm({
   const handleSavePayment = () => saveSettings('payment', paymentSettings);
   const handleSaveCategories = () => saveSettings('categories', { categories });
   const handleSaveUnitsOfMeasure = () => saveSettings('units_of_measure', { units_of_measure: unitsOfMeasure });
+  const handleSaveTruckload = () => saveSettings('truckload', truckloadSettings);
+
+  const addTruckloadRate = () => {
+    setTruckloadSettings({
+      ...truckloadSettings,
+      rates: [
+        ...truckloadSettings.rates,
+        { id: `rate-${Date.now()}`, label: '', rate_per_mile: 0 },
+      ],
+    });
+  };
+
+  const updateTruckloadRate = (index: number, field: keyof TruckloadRate, value: string | number) => {
+    const updated = [...truckloadSettings.rates];
+    updated[index] = { ...updated[index], [field]: value };
+    setTruckloadSettings({ ...truckloadSettings, rates: updated });
+  };
+
+  const removeTruckloadRate = (index: number) => {
+    setTruckloadSettings({
+      ...truckloadSettings,
+      rates: truckloadSettings.rates.filter((_, i) => i !== index),
+    });
+  };
 
   const addShippingMethod = () => {
     setShippingMethods([
@@ -761,6 +800,165 @@ export function SettingsForm({
           {canUpdateUnitsOfMeasure && (
             <div className="mt-6 flex justify-end">
               <SaveButton saving={saving} onClick={handleSaveUnitsOfMeasure} />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Truckload */}
+      {activeTab === 'truckload' && (
+        <div className="space-y-6">
+          {/* Enable / thresholds */}
+          <div className="rounded-xl border border-slate-200 bg-white p-6">
+            <h2 className="mb-6 text-lg font-semibold text-slate-900">Truckload Freight Settings</h2>
+            <div className="space-y-6">
+              <div className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  id="tl-enabled"
+                  checked={truckloadSettings.enabled}
+                  onChange={(e) => setTruckloadSettings({ ...truckloadSettings, enabled: e.target.checked })}
+                  className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                  disabled={!canUpdateShipping}
+                />
+                <label htmlFor="tl-enabled" className="text-sm font-medium text-slate-700">
+                  Enable Truckload Freight
+                </label>
+              </div>
+
+              <div className="grid gap-6 sm:grid-cols-2">
+                <div>
+                  <label htmlFor="tl-min-totes" className={labelClass}>
+                    Min Totes for TL
+                  </label>
+                  <p className="mb-1 text-xs text-slate-500">Orders with this many totes or more are diverted to truckload freight.</p>
+                  <input
+                    id="tl-min-totes"
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={truckloadSettings.min_totes}
+                    onChange={(e) => setTruckloadSettings({ ...truckloadSettings, min_totes: parseInt(e.target.value) || 1 })}
+                    className={inputClass}
+                    disabled={!canUpdateShipping}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="tl-gallons-per-tote" className={labelClass}>Gallons per Tote</label>
+                  <p className="mb-1 text-xs text-slate-500">Used to calculate total gallons for freight cost per gallon.</p>
+                  <input
+                    id="tl-gallons-per-tote"
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={truckloadSettings.gallons_per_tote}
+                    onChange={(e) => setTruckloadSettings({ ...truckloadSettings, gallons_per_tote: parseInt(e.target.value) || 265 })}
+                    className={inputClass}
+                    disabled={!canUpdateShipping}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="tl-min-pallets" className={labelClass}>Min Pallets for TL (case goods)</label>
+                  <p className="mb-1 text-xs text-slate-500">Pallet threshold for case-good products with bulk density data.</p>
+                  <input
+                    id="tl-min-pallets"
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={truckloadSettings.min_pallets}
+                    onChange={(e) => setTruckloadSettings({ ...truckloadSettings, min_pallets: parseInt(e.target.value) || 22 })}
+                    className={inputClass}
+                    disabled={!canUpdateShipping}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="tl-max-weight" className={labelClass}>Max Weight for TL (lbs, case goods)</label>
+                  <p className="mb-1 text-xs text-slate-500">Weight threshold for case-good products with bulk density data.</p>
+                  <input
+                    id="tl-max-weight"
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={truckloadSettings.max_weight_lbs}
+                    onChange={(e) => setTruckloadSettings({ ...truckloadSettings, max_weight_lbs: parseInt(e.target.value) || 44000 })}
+                    className={inputClass}
+                    disabled={!canUpdateShipping}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Rate tiers */}
+          <div className="rounded-xl border border-slate-200 bg-white p-6">
+            <div className="mb-6 flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">Rate Tiers</h2>
+                <p className="mt-0.5 text-sm text-slate-500">Customers choose one of these rates at checkout. Each is calculated as rate × driving miles.</p>
+              </div>
+              {canUpdateShipping && (
+                <button
+                  type="button"
+                  onClick={addTruckloadRate}
+                  className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 hover:cursor-pointer"
+                >
+                  <Plus className="h-4 w-4" />
+                  Add Rate
+                </button>
+              )}
+            </div>
+            <div className="space-y-3">
+              {truckloadSettings.rates.length === 0 && (
+                <p className="text-sm text-slate-500">No rate tiers configured.</p>
+              )}
+              {truckloadSettings.rates.map((rate, index) => (
+                <div key={rate.id} className="grid gap-4 rounded-lg border border-slate-100 bg-slate-50 p-4 sm:grid-cols-3">
+                  <div>
+                    <label htmlFor={`tl-rate-label-${index}`} className={labelClass}>Label</label>
+                    <input
+                      id={`tl-rate-label-${index}`}
+                      type="text"
+                      value={rate.label}
+                      onChange={(e) => updateTruckloadRate(index, 'label', e.target.value)}
+                      className={inputClass}
+                      placeholder="$3.50/mile"
+                      disabled={!canUpdateShipping}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor={`tl-rate-per-mile-${index}`} className={labelClass}>Rate per Mile ($)</label>
+                    <input
+                      id={`tl-rate-per-mile-${index}`}
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={rate.rate_per_mile}
+                      onChange={(e) => updateTruckloadRate(index, 'rate_per_mile', parseFloat(e.target.value) || 0)}
+                      className={inputClass}
+                      disabled={!canUpdateShipping}
+                    />
+                  </div>
+                  {canUpdateShipping && (
+                    <div className="flex items-end">
+                      <button
+                        type="button"
+                        onClick={() => removeTruckloadRate(index)}
+                        className="inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm text-red-600 hover:bg-red-50 hover:cursor-pointer"
+                        aria-label="Remove rate tier"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        Remove
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {canUpdateShipping && (
+            <div className="flex justify-end">
+              <SaveButton saving={saving} onClick={handleSaveTruckload} />
             </div>
           )}
         </div>
