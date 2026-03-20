@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/components/auth-provider';
+import { useCartStore } from '@/lib/cart-store';
 import { OrderByDeadline } from '@/components/crop/order-by-deadline';
 import { Button } from '@/components/ui/button';
 import {
@@ -19,6 +20,8 @@ import {
   Loader2,
   AlertCircle,
   FileText,
+  ShoppingCart,
+  Check,
 } from 'lucide-react';
 
 // --- Types ---
@@ -38,6 +41,10 @@ interface PlanProduct {
   current_price: string | null;
   unit_of_measure: string | null;
   in_stock: boolean;
+  truckload_eligible?: boolean;
+  cases_per_pallet?: number | null;
+  bulk_density_lbs_per_gallon?: number | null;
+  gallons_per_case?: number | null;
 }
 
 interface PlanPass {
@@ -117,6 +124,7 @@ export default function CropPlanDetailPage() {
   const params = useParams();
   const router = useRouter();
   const { user, isPending } = useAuth();
+  const { addItem } = useCartStore();
   const planId = params?.planId as string;
 
   const [plan, setPlan] = useState<CropPlan | null>(null);
@@ -125,6 +133,9 @@ export default function CropPlanDetailPage() {
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [cloning, setCloning] = useState(false);
+  // Track which product IDs were just added (for brief confirmation flash)
+  const [addedIds, setAddedIds] = useState<Set<string>>(new Set());
+  const [allAdded, setAllAdded] = useState(false);
 
   // Auth guard
   useEffect(() => {
@@ -203,6 +214,58 @@ export default function CropPlanDetailPage() {
       setCloning(false);
     }
   };
+
+  // Add a single product to cart using its computed units_needed as quantity
+  const addProductToCart = useCallback((product: PlanProduct) => {
+    const qty = product.units_needed ? Math.ceil(parseFloat(product.units_needed)) : 1;
+    const price = product.current_price ?? product.unit_cost ?? '0';
+    addItem({
+      id: product.product_id,
+      name: product.current_product_name || product.product_name,
+      price,
+      image: '',
+      quantity: qty,
+      inStock: product.in_stock,
+      unitOfMeasure: product.unit_of_measure,
+      truckloadEligible: product.truckload_eligible,
+      casesPerPallet: product.cases_per_pallet,
+      bulkDensityLbsPerGallon: product.bulk_density_lbs_per_gallon,
+      gallonsPerCase: product.gallons_per_case,
+    });
+    setAddedIds((prev) => {
+      const next = new Set(prev);
+      next.add(product.product_id);
+      return next;
+    });
+    setTimeout(() => {
+      setAddedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(product.product_id);
+        return next;
+      });
+    }, 2000);
+  }, [addItem]);
+
+  // Add all products across all passes
+  const addAllToCart = useCallback(() => {
+    if (!plan) return;
+    plan.passes.forEach((pass) => {
+      pass.products.forEach((product) => {
+        addProductToCart(product);
+      });
+    });
+    setAllAdded(true);
+    setTimeout(() => setAllAdded(false), 2500);
+  }, [plan, addProductToCart]);
+
+  // Add all products in a single pass
+  const addPassToCart = useCallback((pass: PlanPass) => {
+    pass.products.forEach((product) => addProductToCart(product));
+  }, [addProductToCart]);
+
+  // Count in-stock products across the whole plan
+  const allProducts = plan?.passes.flatMap((p) => p.products) ?? [];
+  const inStockCount = allProducts.filter((p) => p.in_stock).length;
 
   // Loading / auth pending state
   if (isPending || (loading && !error)) {
@@ -314,6 +377,38 @@ export default function CropPlanDetailPage() {
 
       <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8 space-y-6">
 
+        {/* Add All to Cart CTA */}
+        {allProducts.length > 0 && (
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 shadow-sm">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="font-semibold text-emerald-900">Ready to order?</p>
+                <p className="text-sm text-emerald-700">
+                  {inStockCount} of {allProducts.length} product{allProducts.length !== 1 ? 's' : ''} in stock
+                  {' '}· quantities calculated for {acresNum.toLocaleString()} acres
+                </p>
+              </div>
+              <Button
+                onClick={addAllToCart}
+                size="lg"
+                className="shrink-0 bg-emerald-600 hover:bg-emerald-700 text-white font-bold hover:cursor-pointer"
+              >
+                {allAdded ? (
+                  <>
+                    <Check className="mr-2 h-5 w-5" />
+                    Added to Cart!
+                  </>
+                ) : (
+                  <>
+                    <ShoppingCart className="mr-2 h-5 w-5" />
+                    Add All to Cart
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* Target weeds */}
         {plan.target_weeds && plan.target_weeds.length > 0 && (
           <div className="rounded-xl border border-border bg-white p-4 shadow-sm">
@@ -347,10 +442,11 @@ export default function CropPlanDetailPage() {
             {plan.passes.map((pass) => {
               const cardColor = CATEGORY_COLORS[pass.category] ?? 'bg-slate-50 border-slate-200';
               const badgeColor = CATEGORY_BADGE[pass.category] ?? 'bg-slate-100 text-slate-700';
+              const passInStockCount = pass.products.filter((p) => p.in_stock).length;
               return (
                 <div key={pass.id} className={`rounded-2xl border-2 p-5 ${cardColor}`}>
                   {/* Pass header */}
-                  <div className="mb-4 flex items-start justify-between gap-2">
+                  <div className="mb-4 flex items-start justify-between gap-3">
                     <div>
                       <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold uppercase tracking-wide ${badgeColor}`}>
                         {pass.category}
@@ -360,12 +456,23 @@ export default function CropPlanDetailPage() {
                         <p className="text-xs text-slate-500 mt-0.5">{pass.timing_label}</p>
                       )}
                     </div>
-                    {pass.pass_cost && parseFloat(pass.pass_cost) > 0 && (
-                      <div className="shrink-0 rounded-lg bg-white/80 px-3 py-1.5 text-right shadow-sm">
-                        <p className="text-xs text-slate-500">Pass total</p>
-                        <p className="font-bold text-slate-900">{fmt(pass.pass_cost)}</p>
-                      </div>
-                    )}
+                    <div className="flex shrink-0 flex-col items-end gap-2">
+                      {pass.pass_cost && parseFloat(pass.pass_cost) > 0 && (
+                        <div className="rounded-lg bg-white/80 px-3 py-1.5 text-right shadow-sm">
+                          <p className="text-xs text-slate-500">Pass total</p>
+                          <p className="font-bold text-slate-900">{fmt(pass.pass_cost)}</p>
+                        </div>
+                      )}
+                      {pass.products.length > 1 && passInStockCount > 0 && (
+                        <button
+                          onClick={() => addPassToCart(pass)}
+                          className="flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 hover:cursor-pointer transition-colors"
+                        >
+                          <ShoppingCart className="h-3.5 w-3.5" />
+                          Add Pass to Cart
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   {/* Products */}
@@ -375,6 +482,7 @@ export default function CropPlanDetailPage() {
                         product.unit_cost &&
                         product.current_price &&
                         Math.abs(parseFloat(product.unit_cost) - parseFloat(product.current_price)) > 0.001;
+                      const justAdded = addedIds.has(product.product_id);
 
                       return (
                         <div key={product.id} className="rounded-xl border border-border bg-white p-3">
@@ -407,13 +515,34 @@ export default function CropPlanDetailPage() {
                                 )}
                               </div>
                             </div>
-                            <Link
-                              href={`/shop/${product.product_id}`}
-                              className="shrink-0 flex items-center gap-1 rounded-lg border border-border bg-slate-50 px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 hover:cursor-pointer transition-colors"
-                            >
-                              Shop
-                              <ChevronRight className="h-3 w-3" />
-                            </Link>
+                            {/* Action buttons */}
+                            <div className="flex shrink-0 items-center gap-1.5">
+                              <button
+                                onClick={() => addProductToCart(product)}
+                                disabled={!product.in_stock}
+                                title={product.in_stock ? `Add ${product.units_needed ? Math.ceil(parseFloat(product.units_needed)) : 1} to cart` : 'Out of stock'}
+                                className={`flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors hover:cursor-pointer ${
+                                  justAdded
+                                    ? 'bg-emerald-600 text-white'
+                                    : product.in_stock
+                                    ? 'border border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                                    : 'border border-border bg-slate-50 text-slate-300 cursor-not-allowed'
+                                }`}
+                              >
+                                {justAdded ? (
+                                  <><Check className="h-3 w-3" /> Added</>
+                                ) : (
+                                  <><ShoppingCart className="h-3 w-3" /> Add</>
+                                )}
+                              </button>
+                              <Link
+                                href={`/shop/${product.product_id}`}
+                                className="flex items-center gap-1 rounded-lg border border-border bg-slate-50 px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 hover:cursor-pointer transition-colors"
+                              >
+                                Shop
+                                <ChevronRight className="h-3 w-3" />
+                              </Link>
+                            </div>
                           </div>
 
                           {/* Cost breakdown grid */}
