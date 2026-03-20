@@ -13,9 +13,9 @@ import { signOut } from '@/lib/auth-client';
 import { accountNavItems } from '@/lib/account-navigation';
 
 const navLinks = [
+  { href: '/about', label: 'About' },
   { href: '/shop', label: 'Shop' },
   { href: '/crop', label: 'Crop Planning' },
-  { href: '/about', label: 'About' },
   { href: '/contact', label: 'Contact' },
 ];
 
@@ -44,9 +44,10 @@ export function Header() {
               <Image
                 src="/logo.png"
                 alt="Innovative Crop Care"
-                width={40}
-                height={40}
-                className="h-8 w-auto"
+                width={773}
+                height={332}
+                quality={100}
+                className="h-10 w-auto"
               />
             </Link>
 
@@ -149,9 +150,10 @@ export function Header() {
               <Image
                 src="/logo.png"
                 alt="Innovative Crop Care"
-                width={40}
-                height={40}
-                className="h-8 w-auto"
+                width={773}
+                height={332}
+                quality={100}
+                className="h-10 w-auto"
               />
             </Link>
             <button
