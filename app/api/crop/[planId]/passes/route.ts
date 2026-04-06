@@ -13,7 +13,7 @@ const productSchema = z.object({
   rate_per_acre: z.number().nonnegative(),
   rate_unit: z.string().max(30),
   unit_size: z.number().nonnegative(),
-  unit_size_unit: z.string().max(30),
+  unit_size_unit: z.string().max(30).nullable().optional(),
   lbs_per_gallon: z.number().positive().nullable().optional(),
   units_needed: z.number().nonnegative().optional(),
   unit_cost: z.number().nonnegative().optional(),
@@ -27,7 +27,7 @@ const savePassesSchema = z.object({
     z.object({
       name: z.string().max(100),
       category: z.string().max(50),
-      timing_label: z.string().max(100).optional(),
+      timing_label: z.string().max(500).optional(),
       sort_order: z.number().int().default(0),
       pass_cost: z.number().nonnegative().optional(),
       products: z.array(productSchema),
