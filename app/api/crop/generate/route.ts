@@ -8,6 +8,8 @@ import { z } from 'zod';
 import Anthropic from '@anthropic-ai/sdk';
 import { generateFarmerPlan } from '@/lib/ai';
 import type { ProductForAI, ApprovedProductRate } from '@/lib/ai';
+import { fetchSoilTemperature, assessPlantingReadiness, buildSoilTempContext } from '@/lib/soil-temperature';
+import { fetchWeatherContext, buildWeatherContextString } from '@/lib/weather-context';
 
 export const maxDuration = 60;
 
@@ -16,6 +18,9 @@ const generateSchema = z.object({
   acres: z.number().positive().max(1000000),
   targetWeeds: z.array(z.string().max(100)).min(1).max(20),
   weedPressure: z.enum(['light', 'moderate', 'heavy']),
+  /** Optional lat/lng for soil temperature and weather context */
+  latitude: z.number().min(-90).max(90).optional(),
+  longitude: z.number().min(-180).max(180).optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -46,7 +51,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Validation failed', details: parsed.error.issues }, { status: 400 });
   }
 
-  const { crop, targetWeeds, weedPressure } = parsed.data;
+  const { crop, targetWeeds, weedPressure, latitude, longitude } = parsed.data;
 
   try {
     const session = await auth.api.getSession({ headers: await headers() });
@@ -141,7 +146,26 @@ export async function POST(request: NextRequest) {
       ])
     );
 
-    const draft = await generateFarmerPlan(crop, targetWeeds, weedPressure, productsForAI, approvedRates);
+    // Optionally enrich the AI prompt with real-time soil temperature and weather data
+    let environmentalContext: import('@/lib/ai').EnvironmentalContext | undefined;
+    if (latitude !== undefined && longitude !== undefined) {
+      try {
+        const [soilTemp, weather] = await Promise.all([
+          fetchSoilTemperature(latitude, longitude),
+          fetchWeatherContext(latitude, longitude),
+        ]);
+        const readiness = assessPlantingReadiness(soilTemp.current_f, crop, soilTemp.forecast_daily_f);
+        environmentalContext = {
+          soilTempContext: buildSoilTempContext(soilTemp, readiness, crop),
+          weatherContext: buildWeatherContextString(weather),
+        };
+      } catch (envError) {
+        // Environmental data is optional — log but don't fail the request
+        securityLogger.logError('Environmental data fetch failed (non-fatal)', envError, ip);
+      }
+    }
+
+    const draft = await generateFarmerPlan(crop, targetWeeds, weedPressure, productsForAI, approvedRates, environmentalContext);
 
     return NextResponse.json({ draft });
   } catch (error) {

@@ -1,8 +1,9 @@
 import type { NextConfig } from "next";
+import path from "path";
 
 const nextConfig: NextConfig = {
   turbopack: {
-    root: import.meta.dirname,
+    root: path.resolve(__dirname),
   },
   serverExternalPackages: ['resend', '@anthropic-ai/sdk'],
   compress: true,

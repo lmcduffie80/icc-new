@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { calcUnitsNeeded, calcCostPerAcre } from '@/lib/acre-pack-calc';
+import { SoilTemperatureWidget } from '@/components/crop/soil-temperature-widget';
 
 // --- Types ---
 interface FarmerDraftProduct {
@@ -126,6 +127,21 @@ export default function NewPlanPage() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
 
+  // Farm location for soil temperature widget
+  const [farmZip, setFarmZip] = useState<string | null>(null);
+  const [envCoords, setEnvCoords] = useState<{ lat: number; lng: number } | null>(null);
+
+  useEffect(() => {
+    fetch('/api/profile/farm')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.farmProfile?.zipCode) {
+          setFarmZip(data.farmProfile.zipCode);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   const addWeed = useCallback((weed: string) => {
     const trimmed = weed.trim();
     if (trimmed && !targetWeeds.includes(trimmed)) {
@@ -142,10 +158,20 @@ export default function NewPlanPage() {
     setGenerating(true);
     setGenError('');
     try {
+      const payload: Record<string, unknown> = {
+        crop,
+        acres: parseFloat(acres),
+        targetWeeds,
+        weedPressure,
+      };
+      if (envCoords) {
+        payload.latitude = envCoords.lat;
+        payload.longitude = envCoords.lng;
+      }
       const res = await fetch('/api/crop/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ crop, acres: parseFloat(acres), targetWeeds, weedPressure }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -343,6 +369,20 @@ export default function NewPlanPage() {
                 </button>
               ))}
             </div>
+
+            {/* Soil Temperature Widget — shown when crop is selected and farm zip is available */}
+            {crop && farmZip && (
+              <div className="mb-6">
+                <p className="mb-2 text-sm font-semibold text-slate-700">
+                  Current Field Conditions
+                </p>
+                <SoilTemperatureWidget
+                  zip={farmZip}
+                  cropType={crop}
+                  onDataLoaded={(lat, lng) => setEnvCoords({ lat, lng })}
+                />
+              </div>
+            )}
 
             <div className="mb-4">
               <label className="mb-1 block text-sm font-semibold text-slate-700">

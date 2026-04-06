@@ -283,7 +283,7 @@ Resistance management principles:
 - Adjuvants improve uptake and efficacy of many post-emerge herbicides.
 `;
 
-const FARMER_SYSTEM_PROMPT = `You are an expert agronomist and crop protection advisor for Innovative Crop Care (ICC). Your job is to create personalized crop protection plans for farmers based on their specific weed problems and crop.
+const FARMER_SYSTEM_PROMPT = `You are an expert agronomist and crop protection advisor for Innovative Crop Care (ICC). Your job is to create personalized crop protection plans for farmers based on their specific weed problems, crop, and current field conditions.
 
 Rules:
 1. ONLY use products from the provided catalog. Never invent product IDs or names.
@@ -302,14 +302,24 @@ Rules:
 10. A product can appear in multiple passes if agronomically appropriate.
 11. If the catalog has no products suitable for a pass category, omit that pass entirely.
 12. Provide a brief reasoning for each product explaining WHY it controls the named weeds and how you determined the rate.
-13. Include weed_management_notes with resistance management advice specific to the named weeds.`;
+13. Include weed_management_notes with resistance management advice specific to the named weeds.
+14. If soil temperature and weather data are provided, incorporate them into your reasoning: note if conditions are optimal or suboptimal for specific products, and mention timing implications in the timing_label fields.`;
+
+/** Optional environmental context injected into the AI prompt */
+export interface EnvironmentalContext {
+  /** Pre-formatted soil temperature + planting readiness block */
+  soilTempContext: string;
+  /** Pre-formatted weather + spray window block */
+  weatherContext: string;
+}
 
 export async function generateFarmerPlan(
   crop: string,
   targetWeeds: string[],
   weedPressure: 'light' | 'moderate' | 'heavy',
   products: ProductForAI[],
-  approvedRates?: Map<string, ApprovedProductRate>
+  approvedRates?: Map<string, ApprovedProductRate>,
+  environmentalContext?: EnvironmentalContext
 ): Promise<FarmerDraftPlan> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
@@ -322,6 +332,10 @@ export async function generateFarmerPlan(
   const catalog = buildProductCatalog(products, approvedRates);
   const weedList = targetWeeds.length > 0 ? targetWeeds.join(', ') : 'general broadleaf and grass weeds';
 
+  const envSection = environmentalContext
+    ? `\n${environmentalContext.soilTempContext}\n\n${environmentalContext.weatherContext}\n`
+    : '';
+
   const userPrompt = `Create a personalized crop protection plan for a farmer growing **${crop}**.
 
 ## Target Weeds
@@ -330,7 +344,7 @@ Weed pressure level: **${weedPressure}**
 
 ## Agronomic Context
 ${cropContext}
-
+${envSection}
 ## Weed Biology and Resistance Notes
 ${WEED_CONTEXT}
 
