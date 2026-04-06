@@ -54,7 +54,6 @@ export async function fetchSoilTemperature(
   url.searchParams.set('latitude', latitude.toFixed(4));
   url.searchParams.set('longitude', longitude.toFixed(4));
   url.searchParams.set('hourly', 'soil_temperature_6cm');
-  url.searchParams.set('daily', 'soil_temperature_0_to_7cm_max,soil_temperature_0_to_7cm_min');
   url.searchParams.set('temperature_unit', 'celsius');
   url.searchParams.set('forecast_days', '8');
   url.searchParams.set('timezone', 'auto');
@@ -64,7 +63,8 @@ export async function fetchSoilTemperature(
   });
 
   if (!res.ok) {
-    throw new Error(`Open-Meteo API error: ${res.status} ${res.statusText}`);
+    const errorBody = await res.text().catch(() => '');
+    throw new Error(`Open-Meteo API error: ${res.status} ${res.statusText}${errorBody ? ` — ${errorBody}` : ''}`);
   }
 
   const data = await res.json();
@@ -74,9 +74,15 @@ export async function fetchSoilTemperature(
   const currentTempC = hourlyTemps[0] ?? 10;
   const currentTempF = celsiusToFahrenheit(currentTempC);
 
-  // Daily max soil temps for 7-day forecast
-  const dailyMaxC: number[] = data.daily?.soil_temperature_0_to_7cm_max ?? [];
-  const forecastF = dailyMaxC.slice(0, 7).map(celsiusToFahrenheit);
+  // Derive daily max from hourly data: group 24 readings per day, take the max
+  const forecastF: number[] = [];
+  for (let day = 0; day < 7; day++) {
+    const slice = hourlyTemps.slice(day * 24, (day + 1) * 24).filter((t) => t != null);
+    if (slice.length > 0) {
+      const maxC = Math.max(...slice);
+      forecastF.push(celsiusToFahrenheit(maxC));
+    }
+  }
 
   // Determine trend from next 3 days vs today
   const trend = determineTrend(currentTempC, hourlyTemps);
