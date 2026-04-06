@@ -110,5 +110,7 @@ export function calcUnitsNeeded(
 
 export function calcCostPerAcre(unitsNeeded: number, price: string, acreage: number): number {
   if (acreage <= 0) return 0;
-  return (unitsNeeded * parseFloat(price)) / acreage;
+  const priceNum = parseFloat(price);
+  if (!isFinite(priceNum)) return 0;
+  return (unitsNeeded * priceNum) / acreage;
 }

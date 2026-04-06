@@ -247,7 +247,7 @@ export default function NewPlanPage() {
             p.unit_size_unit,
             p.lbs_per_gallon
           );
-          const unitCost = parseFloat(p.price) || 0;
+          const unitCost = isFinite(parseFloat(p.price)) ? parseFloat(p.price) : 0;
           const lineTotal = unitsNeeded * unitCost;
           const costPerAcre = calcCostPerAcre(unitsNeeded, p.price, acresNum);
           passCost += lineTotal;
@@ -280,14 +280,29 @@ export default function NewPlanPage() {
       const totalCost = computedPasses.reduce((sum, p) => sum + (p.pass_cost ?? 0), 0);
       const planCostPerAcre = acresNum > 0 ? totalCost / acresNum : 0;
 
+      // Sanitize: replace any NaN/Infinity that slipped through with 0
+      const safeNum = (n: number | undefined | null) =>
+        n == null || !isFinite(n) ? 0 : n;
+      const sanitizedPasses = computedPasses.map((pass) => ({
+        ...pass,
+        pass_cost: safeNum(pass.pass_cost),
+        products: pass.products.map((p) => ({
+          ...p,
+          unit_cost: safeNum(p.unit_cost),
+          line_total: safeNum(p.line_total),
+          cost_per_acre: safeNum(p.cost_per_acre),
+          units_needed: safeNum(p.units_needed),
+        })),
+      }));
+
       // 3. Save passes and products
       const saveRes = await fetch(`/api/crop/${planId}/passes`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          passes: computedPasses,
-          total_cost: totalCost,
-          cost_per_acre: planCostPerAcre,
+          passes: sanitizedPasses,
+          total_cost: safeNum(totalCost),
+          cost_per_acre: safeNum(planCostPerAcre),
           ai_generated: true,
         }),
       });

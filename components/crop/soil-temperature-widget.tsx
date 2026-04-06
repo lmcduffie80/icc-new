@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Thermometer, Wind, Droplets, TrendingUp, TrendingDown, Minus, AlertTriangle, CheckCircle, Clock, CloudRain } from 'lucide-react';
 
 interface SoilTemperatureData {
@@ -101,6 +101,10 @@ export function SoilTemperatureWidget({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  // Keep a stable ref to onDataLoaded so it never triggers a re-fetch
+  const onDataLoadedRef = useRef(onDataLoaded);
+  useEffect(() => { onDataLoadedRef.current = onDataLoaded; }, [onDataLoaded]);
+
   useEffect(() => {
     const hasLatLng = latitude !== undefined && longitude !== undefined && latitude !== 0 && longitude !== 0;
     const hasZip = zip && zip.length === 5;
@@ -128,14 +132,14 @@ export function SoilTemperatureWidget({
         const resolvedLat = json.resolved_coords?.lat ?? latitude ?? 0;
         const resolvedLng = json.resolved_coords?.lng ?? longitude ?? 0;
         if (resolvedLat !== 0 && resolvedLng !== 0) {
-          onDataLoaded?.(resolvedLat, resolvedLng);
+          onDataLoadedRef.current?.(resolvedLat, resolvedLng);
         }
       })
       .catch(() => {
         setError('Unable to load field conditions. Environmental data is optional.');
       })
       .finally(() => setLoading(false));
-  }, [latitude, longitude, zip, cropType, onDataLoaded]);
+  }, [latitude, longitude, zip, cropType]); // onDataLoaded intentionally excluded — stable via ref
 
   if (loading) {
     return (
