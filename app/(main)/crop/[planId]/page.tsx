@@ -23,6 +23,8 @@ import {
   ShoppingCart,
   Check,
 } from 'lucide-react';
+import { CarbonScoreWidget } from '@/components/crop/carbon-score-widget';
+import type { CarbonScore } from '@/lib/carbon-scoring';
 
 // --- Types ---
 interface PlanProduct {
@@ -74,6 +76,7 @@ interface CropPlan {
   status: string;
   ai_generated: boolean;
   notes: string | null;
+  carbon_score: CarbonScore | null;
   created_at: string;
   updated_at: string;
   passes: PlanPass[];
@@ -441,6 +444,9 @@ export default function CropPlanDetailPage() {
 
         {/* Order-by deadline */}
         <OrderByDeadline planId={plan.id} variant="full" />
+
+        {/* Carbon score */}
+        <CarbonScoreWidget carbonScore={plan.carbon_score} acres={acresNum} />
 
         {/* Passes */}
         {plan.passes.length === 0 ? (

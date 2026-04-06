@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -21,6 +21,8 @@ import {
 import { Button } from '@/components/ui/button';
 import { calcUnitsNeeded, calcCostPerAcre } from '@/lib/acre-pack-calc';
 import { SoilTemperatureWidget } from '@/components/crop/soil-temperature-widget';
+import { CarbonScoreWidget } from '@/components/crop/carbon-score-widget';
+import { calculateCarbonScore } from '@/lib/carbon-scoring';
 
 // --- Types ---
 interface FarmerDraftProduct {
@@ -130,6 +132,21 @@ export default function NewPlanPage() {
   // Farm location for soil temperature widget
   const [farmZip, setFarmZip] = useState<string | null>(null);
   const [envCoords, setEnvCoords] = useState<{ lat: number; lng: number } | null>(null);
+
+  // Carbon score preview — computed from the AI draft whenever it changes
+  const previewCarbonScore = useMemo(() => {
+    if (!draft) return null;
+    const acresNum = parseFloat(acres) || 0;
+    const scoringPasses = draft.passes.map((pass) => ({
+      category: pass.category,
+      products: pass.products.map((p) => ({
+        product_name: p.product_name,
+        rate_per_acre: p.rate_per_acre,
+        rate_unit: p.rate_unit,
+      })),
+    }));
+    return calculateCarbonScore(scoringPasses, crop, acresNum);
+  }, [draft, crop, acres]);
 
   useEffect(() => {
     fetch('/api/profile/farm')
@@ -596,9 +613,16 @@ export default function NewPlanPage() {
             )}
 
             {draft.weed_management_notes && (
-              <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+              <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
                 <p className="font-semibold mb-1">Resistance Management Notes</p>
                 <p>{draft.weed_management_notes}</p>
+              </div>
+            )}
+
+            {/* Carbon score preview */}
+            {previewCarbonScore && (
+              <div className="mb-6">
+                <CarbonScoreWidget carbonScore={previewCarbonScore} acres={parseFloat(acres) || 0} />
               </div>
             )}
 

@@ -5,6 +5,7 @@ import { query } from '@/lib/db';
 import { rateLimiters, checkRateLimit, createRateLimitResponse, getClientIp } from '@/lib/rate-limit';
 import { securityLogger } from '@/lib/security-logger';
 import { z } from 'zod';
+import { calculateCarbonScore } from '@/lib/carbon-scoring';
 
 const productSchema = z.object({
   product_id: z.string(),
@@ -73,9 +74,9 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Verify plan belongs to this user
-    const plans = await query<{ id: number }>(
-      `SELECT id FROM farmer_crop_plans WHERE id = $1 AND user_id = $2`,
+    // Verify plan belongs to this user; fetch crop/acres for carbon scoring
+    const plans = await query<{ id: number; crop: string; total_acres: string }>(
+      `SELECT id, crop, total_acres FROM farmer_crop_plans WHERE id = $1 AND user_id = $2`,
       [planIdNum, session.user.id]
     );
     if (plans.length === 0) {
@@ -119,12 +120,28 @@ export async function POST(
       }
     }
 
-    // Update plan totals and status
+    // Compute carbon score from the saved passes
+    const scoringPasses = passes.map((pass) => ({
+      category: pass.category,
+      products: pass.products.map((p) => ({
+        product_name: p.product_name,
+        rate_per_acre: p.rate_per_acre,
+        rate_unit: p.rate_unit,
+      })),
+    }));
+    const carbonScore = calculateCarbonScore(
+      scoringPasses,
+      plans[0].crop,
+      parseFloat(plans[0].total_acres)
+    );
+
+    // Update plan totals, status, and carbon score
     await query(
       `UPDATE farmer_crop_plans
-       SET total_cost = $1, cost_per_acre = $2, ai_generated = $3, status = 'saved', updated_at = NOW()
-       WHERE id = $4`,
-      [total_cost ?? null, cost_per_acre ?? null, ai_generated, planIdNum]
+       SET total_cost = $1, cost_per_acre = $2, ai_generated = $3, status = 'saved',
+           carbon_score = $4, updated_at = NOW()
+       WHERE id = $5`,
+      [total_cost ?? null, cost_per_acre ?? null, ai_generated, JSON.stringify(carbonScore), planIdNum]
     );
 
     return NextResponse.json({ success: true });

@@ -62,6 +62,7 @@ export async function GET(
       status: string;
       ai_generated: boolean;
       notes: string | null;
+      carbon_score: Record<string, unknown> | null;
       created_at: string;
       updated_at: string;
     }>(
