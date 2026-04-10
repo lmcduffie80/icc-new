@@ -114,7 +114,9 @@
       "defu": ">=6.1.5",
       "picomatch": ">=4.0.4",
       "nodemailer": ">=8.0.5",
-      "mailparser": ">=3.9.3"
+      "mailparser": ">=3.9.3",
+      "drizzle-orm": ">=0.45.2",
+      "brace-expansion": ">=5.0.5"
     }
   }
 }
