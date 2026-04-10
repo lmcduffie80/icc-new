@@ -5,6 +5,7 @@ import { queryOne } from '@/lib/db';
 import { farmProfileSchema } from '@/lib/validation';
 import { checkRateLimit, rateLimiters, createRateLimitResponse, getClientIp } from '@/lib/rate-limit';
 import { securityLogger } from '@/lib/security-logger';
+import { geocodeZip } from '@/lib/geocode';
 
 interface DbFarmProfile {
   id: string;
@@ -13,6 +14,8 @@ interface DbFarmProfile {
   zip_code: string;
   crop_types: string;
   farm_acres: string;
+  latitude: number | null;
+  longitude: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -54,6 +57,8 @@ export async function GET(request: NextRequest) {
         zipCode: farmProfile.zip_code,
         cropTypes: farmProfile.crop_types,
         farmAcres: farmProfile.farm_acres,
+        latitude: farmProfile.latitude ?? null,
+        longitude: farmProfile.longitude ?? null,
         createdAt: farmProfile.created_at,
         updatedAt: farmProfile.updated_at,
       },
@@ -99,6 +104,8 @@ export async function PUT(request: NextRequest) {
 
     const { farmName, zipCode, cropTypes, farmAcres } = result.data;
 
+    const coords = await geocodeZip(zipCode);
+
     // Check if profile exists
     const existingProfile = await queryOne<DbFarmProfile>(
       `SELECT id FROM farm_profiles WHERE user_id = $1`,
@@ -111,18 +118,19 @@ export async function PUT(request: NextRequest) {
       // Update existing profile
       farmProfile = await queryOne<DbFarmProfile>(
         `UPDATE farm_profiles
-         SET farm_name = $1, zip_code = $2, crop_types = $3, farm_acres = $4, updated_at = NOW()
-         WHERE user_id = $5
+         SET farm_name = $1, zip_code = $2, crop_types = $3, farm_acres = $4,
+             latitude = $5, longitude = $6, updated_at = NOW()
+         WHERE user_id = $7
          RETURNING *`,
-        [farmName, zipCode, cropTypes, farmAcres, session.user.id]
+        [farmName, zipCode, cropTypes, farmAcres, coords?.lat ?? null, coords?.lng ?? null, session.user.id]
       );
     } else {
       // Create new profile
       farmProfile = await queryOne<DbFarmProfile>(
-        `INSERT INTO farm_profiles (user_id, farm_name, zip_code, crop_types, farm_acres)
-         VALUES ($1, $2, $3, $4, $5)
+        `INSERT INTO farm_profiles (user_id, farm_name, zip_code, crop_types, farm_acres, latitude, longitude)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
          RETURNING *`,
-        [session.user.id, farmName, zipCode, cropTypes, farmAcres]
+        [session.user.id, farmName, zipCode, cropTypes, farmAcres, coords?.lat ?? null, coords?.lng ?? null]
       );
     }
 
@@ -138,6 +146,8 @@ export async function PUT(request: NextRequest) {
         zipCode: farmProfile.zip_code,
         cropTypes: farmProfile.crop_types,
         farmAcres: farmProfile.farm_acres,
+        latitude: farmProfile.latitude ?? null,
+        longitude: farmProfile.longitude ?? null,
         createdAt: farmProfile.created_at,
         updatedAt: farmProfile.updated_at,
       },
@@ -180,6 +190,8 @@ export async function POST(request: NextRequest) {
 
     const { farmName, zipCode, cropTypes, farmAcres } = result.data;
 
+    const coords = await geocodeZip(zipCode);
+
     // Verify user exists
     const userExists = await queryOne<{ id: string }>(
       `SELECT id FROM "user" WHERE id = $1`,
@@ -202,10 +214,10 @@ export async function POST(request: NextRequest) {
 
     // Create new profile
     const farmProfile = await queryOne<DbFarmProfile>(
-      `INSERT INTO farm_profiles (user_id, farm_name, zip_code, crop_types, farm_acres)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO farm_profiles (user_id, farm_name, zip_code, crop_types, farm_acres, latitude, longitude)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING *`,
-      [userId, farmName, zipCode, cropTypes, farmAcres]
+      [userId, farmName, zipCode, cropTypes, farmAcres, coords?.lat ?? null, coords?.lng ?? null]
     );
 
     if (!farmProfile) {
@@ -220,6 +232,8 @@ export async function POST(request: NextRequest) {
         zipCode: farmProfile.zip_code,
         cropTypes: farmProfile.crop_types,
         farmAcres: farmProfile.farm_acres,
+        latitude: farmProfile.latitude ?? null,
+        longitude: farmProfile.longitude ?? null,
         createdAt: farmProfile.created_at,
         updatedAt: farmProfile.updated_at,
       },

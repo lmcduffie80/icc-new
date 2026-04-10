@@ -152,7 +152,11 @@ export default function NewPlanPage() {
     fetch('/api/profile/farm')
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (data?.farmProfile?.zipCode) {
+        if (data?.farmProfile?.latitude && data?.farmProfile?.longitude) {
+          // Use precise stored coordinates — no ZIP lookup needed
+          setEnvCoords({ lat: data.farmProfile.latitude, lng: data.farmProfile.longitude });
+        } else if (data?.farmProfile?.zipCode) {
+          // Fall back to ZIP-based widget lookup for profiles without stored coords
           setFarmZip(data.farmProfile.zipCode);
         }
       })
@@ -402,14 +406,16 @@ export default function NewPlanPage() {
               ))}
             </div>
 
-            {/* Soil Temperature Widget — shown when crop is selected and farm zip is available */}
-            {crop && farmZip && (
+            {/* Soil Temperature Widget — shown when crop is selected and farm location is available */}
+            {crop && (envCoords || farmZip) && (
               <div className="mb-6">
                 <p className="mb-2 text-sm font-semibold text-slate-700">
                   Current Field Conditions
                 </p>
                 <SoilTemperatureWidget
-                  zip={farmZip}
+                  latitude={envCoords?.lat}
+                  longitude={envCoords?.lng}
+                  zip={envCoords ? undefined : (farmZip ?? undefined)}
                   cropType={crop}
                   onDataLoaded={(lat, lng) => setEnvCoords({ lat, lng })}
                 />

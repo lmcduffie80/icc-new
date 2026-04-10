@@ -8,7 +8,7 @@ import {
   assessPlantingReadiness,
 } from '@/lib/soil-temperature';
 import { fetchWeatherContext } from '@/lib/weather-context';
-import { zipToLatLng } from '@/lib/zip-to-latlong';
+import { geocodeZip } from '@/lib/geocode';
 
 const querySchema = z.union([
   z.object({
@@ -60,7 +60,7 @@ export async function GET(request: NextRequest) {
   const crop = parsed.data.crop;
 
   if (parsed.data.zip) {
-    const coords = zipToLatLng(parsed.data.zip);
+    const coords = await geocodeZip(parsed.data.zip);
     if (!coords) {
       return NextResponse.json(
         { error: 'Unable to determine coordinates for the provided ZIP code.' },
