@@ -24,6 +24,7 @@ export function Header() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const { user } = useAuth();
   const { getTotalItems } = useCartStore();
   const totalItems = getTotalItems();
@@ -31,6 +32,18 @@ export function Header() {
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    if (!userMenuOpen) return;
+    function handleClickOutside(e: MouseEvent) {
+      const target = e.target as Element;
+      if (!target.closest('[data-user-menu]')) {
+        setUserMenuOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [userMenuOpen]);
 
   useSearchShortcut(() => setSearchOpen(true));
 
@@ -88,11 +101,16 @@ export function Header() {
               </button>
 
               {user ? (
-                <div className="relative hidden md:block">
-                  <details className="group">
-                    <summary className="flex cursor-pointer list-none items-center gap-1 rounded-md p-2 text-sm text-muted-foreground transition-colors hover:text-foreground">
-                      <User className="h-5 w-5" />
-                    </summary>
+                <div className="relative hidden md:block" data-user-menu>
+                  <button
+                    aria-label="Account menu"
+                    aria-expanded={userMenuOpen}
+                    onClick={() => setUserMenuOpen((prev) => !prev)}
+                    className="flex cursor-pointer items-center gap-1 rounded-md p-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    <User className="h-5 w-5" />
+                  </button>
+                  {userMenuOpen && (
                     <div className="absolute right-0 top-full z-50 mt-1 w-48 rounded-md border border-border bg-background shadow-lg">
                       <div className="p-2">
                         <p className="truncate px-2 py-1 text-xs text-muted-foreground">
@@ -103,6 +121,7 @@ export function Header() {
                           <Link
                             key={item.href}
                             href={item.href}
+                            onClick={() => setUserMenuOpen(false)}
                             className="flex items-center gap-2 rounded px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                           >
                             <item.icon className="h-4 w-4" />
@@ -111,7 +130,7 @@ export function Header() {
                         ))}
                         <div className="my-1 border-t border-border" />
                         <button
-                          onClick={() => signOut()}
+                          onClick={() => { setUserMenuOpen(false); signOut(); }}
                           className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:cursor-pointer hover:bg-muted hover:text-foreground"
                         >
                           <LogOut className="h-4 w-4" />
@@ -119,7 +138,7 @@ export function Header() {
                         </button>
                       </div>
                     </div>
-                  </details>
+                  )}
                 </div>
               ) : (
                 <Link
