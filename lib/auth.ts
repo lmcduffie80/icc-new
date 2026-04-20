@@ -1,10 +1,53 @@
 import { betterAuth } from 'better-auth';
-import { Pool } from '@neondatabase/serverless';
+import { Pool } from 'pg';
 import { passkey } from '@better-auth/passkey';
 import { sendVerificationEmail, sendPasswordResetEmail } from './email';
 
+// Normalize an origin string: trim whitespace, strip trailing slashes,
+// and discard anything that doesn't parse as an absolute URL with a host.
+// This guards against common env-var mistakes like "https://example.com/"
+// or accidental whitespace, both of which would otherwise silently break
+// better-auth's exact-string CSRF check and produce "Invalid origin".
+function normalizeOrigin(value: string | undefined | null): string | null {
+  if (!value) return null;
+  const trimmed = value.trim().replace(/\/+$/, '');
+  if (!trimmed) return null;
+  try {
+    const url = new URL(trimmed);
+    if (!url.host) return null;
+    return `${url.protocol}//${url.host}`;
+  } catch {
+    return null;
+  }
+}
+
+const baseURL =
+  normalizeOrigin(process.env.BETTER_AUTH_URL) ?? 'http://localhost:3000';
+
+// Build the trusted-origin list from every URL the app might be served from.
+// Keeping multiple sources here means a single misconfigured env var (or a
+// `vercel env pull` overwriting a local value) cannot lock you out of auth.
+//   - BETTER_AUTH_URL:   canonical URL for this environment.
+//   - VERCEL_URL:        per-deployment URL Vercel injects automatically
+//                        (e.g. icc-abc123-team.vercel.app on previews).
+//   - VERCEL_BRANCH_URL: stable branch alias (e.g. icc-git-main-team.vercel.app).
+//   - localhost:3000:    always trusted in non-production for local dev,
+//                        so a broken env var can't break sign-in locally.
+const trustedOrigins = Array.from(
+  new Set(
+    [
+      baseURL,
+      normalizeOrigin(process.env.VERCEL_URL && `https://${process.env.VERCEL_URL}`),
+      normalizeOrigin(
+        process.env.VERCEL_BRANCH_URL && `https://${process.env.VERCEL_BRANCH_URL}`
+      ),
+      process.env.NODE_ENV !== 'production' ? 'http://localhost:3000' : null,
+    ].filter((origin): origin is string => Boolean(origin))
+  )
+);
+
 export const auth = betterAuth({
-  baseURL: process.env.BETTER_AUTH_URL || 'http://localhost:3000',
+  baseURL,
   database: new Pool({
     connectionString: process.env.DATABASE_URL,
   }),
@@ -92,9 +135,7 @@ export const auth = betterAuth({
       maxAge: 60 * 5, // 5 minutes
     },
   },
-  trustedOrigins: [
-    process.env.BETTER_AUTH_URL || 'http://localhost:3000',
-  ],
+  trustedOrigins,
   plugins: [
     passkey(),
   ],

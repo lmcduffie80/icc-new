@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/admin-auth';
-import { query, queryOne } from '@/lib/db';
+import { queryOne, withTransaction } from '@/lib/db';
 import { hashAdminPassword } from '@/lib/admin-password';
 import { logAction } from '@/lib/audit';
 import { getClientIp } from '@/lib/rate-limit';
@@ -54,12 +54,10 @@ export async function PUT(
     // Hash the new password
     const passwordHash = await hashAdminPassword(password);
 
-    // Use transaction to ensure atomicity
-    try {
-      await query('BEGIN');
-
-      // Update password and clear lockout
-      await query(
+    // Atomically update the password, clear lockout state, and invalidate
+    // every existing session so the supplier is forced to log in again.
+    await withTransaction(async (client) => {
+      await client.query(
         `UPDATE supplier_users
          SET password_hash = $1,
              failed_login_attempts = 0,
@@ -69,17 +67,11 @@ export async function PUT(
         [passwordHash, id]
       );
 
-      // Invalidate all sessions for this supplier
-      await query(
+      await client.query(
         'DELETE FROM supplier_sessions WHERE supplier_user_id = $1',
         [id]
       );
-
-      await query('COMMIT');
-    } catch (error) {
-      await query('ROLLBACK');
-      throw error;
-    }
+    });
 
     // Log the action (don't log the actual password!)
     await logAction({

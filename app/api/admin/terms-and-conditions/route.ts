@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdminSession } from '@/lib/admin-auth';
-import { query, queryOne } from '@/lib/db';
+import { query, queryOne, withTransaction } from '@/lib/db';
 import { termsSchema } from '@/lib/validation';
 import { rateLimiters, checkRateLimit, createRateLimitResponse, getClientIp } from '@/lib/rate-limit';
 import { securityLogger } from '@/lib/security-logger';
@@ -127,49 +127,40 @@ export async function POST(request: NextRequest) {
     );
     const nextVersion = (currentTerms?.version || 0) + 1;
 
-    // Begin transaction: deactivate old version and insert new one
-    await query('BEGIN');
-
-    try {
-      // Deactivate current version
-      await query(
+    // Atomically deactivate the old version and insert the new one.
+    const newTerms = await withTransaction(async (client) => {
+      await client.query(
         'UPDATE terms_and_conditions SET is_active = false WHERE is_active = true'
       );
 
-      // Insert new version
-      const newTerms = await queryOne<TermsRecord>(
+      const { rows } = await client.query<TermsRecord>(
         `INSERT INTO terms_and_conditions (title, content, version, is_active, updated_by)
          VALUES ($1, $2, $3, true, $4)
          RETURNING id, title, content, version, is_active, updated_by, created_at, updated_at`,
         [title, content, nextVersion, session.user.id]
       );
 
-      await query('COMMIT');
+      return rows[0] ?? null;
+    });
 
-      // Log admin action
-      securityLogger.logAdminAction(
-        session.user.id,
-        session.user.email,
-        'update_terms_and_conditions',
-        newTerms?.id || 'unknown',
-        ip,
-        {
-          version: nextVersion,
-          title,
-          contentLength: content.length,
-        }
-      );
+    securityLogger.logAdminAction(
+      session.user.id,
+      session.user.email,
+      'update_terms_and_conditions',
+      newTerms?.id || 'unknown',
+      ip,
+      {
+        version: nextVersion,
+        title,
+        contentLength: content.length,
+      }
+    );
 
-      return NextResponse.json({
-        success: true,
-        terms: newTerms,
-        message: `Version ${nextVersion} saved successfully`,
-      });
-    } catch (error) {
-      // Rollback on error
-      await query('ROLLBACK');
-      throw error;
-    }
+    return NextResponse.json({
+      success: true,
+      terms: newTerms,
+      message: `Version ${nextVersion} saved successfully`,
+    });
   } catch (error) {
     console.error('Error saving terms and conditions:', error);
     securityLogger.logError('Failed to save terms and conditions', error, ip);

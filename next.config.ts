@@ -5,7 +5,7 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: path.resolve(__dirname),
   },
-  serverExternalPackages: ['resend', '@anthropic-ai/sdk'],
+  serverExternalPackages: ['resend', '@anthropic-ai/sdk', 'pg'],
   compress: true,
   experimental: {
     optimizePackageImports: ['lucide-react'],

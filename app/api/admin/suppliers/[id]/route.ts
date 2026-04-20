@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/admin-auth';
-import { query, queryOne } from '@/lib/db';
+import { query, queryOne, withTransaction } from '@/lib/db';
 import { logAction } from '@/lib/audit';
 import { supplierUserUpdateSchema } from '@/lib/validation';
 import { supplierEmailExists } from '@/lib/supplier-auth';
@@ -286,19 +286,13 @@ export async function DELETE(
       );
     }
 
-    // Use transaction to ensure atomicity
-    try {
-      await query('BEGIN');
-
-      // Delete supplier (cascades to supplier_sessions and supplier_warehouses)
-      // Products.supplier_id will be set to NULL (ON DELETE SET NULL)
-      await query('DELETE FROM supplier_users WHERE id = $1', [id]);
-
-      await query('COMMIT');
-    } catch (error) {
-      await query('ROLLBACK');
-      throw error;
-    }
+    // Wrapped in a transaction so any future related cleanup statements
+    // added here will inherit atomicity. The DELETE itself cascades to
+    // supplier_sessions and supplier_warehouses; products.supplier_id is
+    // set to NULL (ON DELETE SET NULL).
+    await withTransaction(async (client) => {
+      await client.query('DELETE FROM supplier_users WHERE id = $1', [id]);
+    });
 
     // Log the action
     await logAction({

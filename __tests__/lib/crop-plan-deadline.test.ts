@@ -1,7 +1,21 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import { computeCropPlanDeadline } from '@/lib/crop-plan-deadline';
 
 describe('computeCropPlanDeadline', () => {
+  // Pin "today" well before the 2026 spring planting window so the
+  // order-by-date logic always lands in the future. Without this the
+  // "Order by" message branch silently flips to the "Order ASAP" branch
+  // once real-world time crosses each test's order-by threshold, and the
+  // suite breaks on a date-dependent schedule.
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-15T12:00:00Z'));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('returns orderByDate before earliestTargetDate', () => {
     const result = computeCropPlanDeadline(
       '31794',

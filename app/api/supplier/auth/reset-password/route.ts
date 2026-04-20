@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { queryOne, query } from '@/lib/db';
+import { queryOne, withTransaction } from '@/lib/db';
 import { hashAdminPassword } from '@/lib/admin-password';
 import { rateLimiters, checkRateLimit, createRateLimitResponse, getClientIp } from '@/lib/rate-limit';
 import { securityLogger } from '@/lib/security-logger';
@@ -87,12 +87,10 @@ export async function POST(request: NextRequest) {
     const passwordHash = await hashAdminPassword(newPassword);
 
     // 5. UPDATE PASSWORD, CLEAR LOCKOUT, MARK TOKEN AS USED, INVALIDATE SESSIONS
-    // Use transaction to ensure atomicity
-    try {
-      await query('BEGIN');
-
-      // Update password and clear lockout
-      await query(
+    // All four writes must succeed or fail together: marking the token as
+    // used while leaving the password unchanged would lock the supplier out.
+    await withTransaction(async (client) => {
+      await client.query(
         `UPDATE supplier_users
          SET password_hash = $1,
              failed_login_attempts = 0,
@@ -102,23 +100,16 @@ export async function POST(request: NextRequest) {
         [passwordHash, tokenRecord.supplier_user_id]
       );
 
-      // Mark token as used
-      await query(
+      await client.query(
         'UPDATE supplier_password_reset_tokens SET used_at = NOW() WHERE id = $1',
         [tokenRecord.id]
       );
 
-      // Invalidate ALL sessions for this supplier
-      await query(
+      await client.query(
         'DELETE FROM supplier_sessions WHERE supplier_user_id = $1',
         [tokenRecord.supplier_user_id]
       );
-
-      await query('COMMIT');
-    } catch (error) {
-      await query('ROLLBACK');
-      throw error;
-    }
+    });
 
     // 6. LOG SUCCESSFUL PASSWORD RESET
     securityLogger.logEvent({

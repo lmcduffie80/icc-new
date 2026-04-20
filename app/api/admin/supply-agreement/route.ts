@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdminSession } from '@/lib/admin-auth';
-import { query, queryOne } from '@/lib/db';
+import { query, queryOne, withTransaction } from '@/lib/db';
 import { termsSchema } from '@/lib/validation';
 import { rateLimiters, checkRateLimit, createRateLimitResponse, getClientIp } from '@/lib/rate-limit';
 import { securityLogger } from '@/lib/security-logger';
@@ -107,40 +107,35 @@ export async function POST(request: NextRequest) {
     );
     const nextVersion = (currentTemplate?.version || 0) + 1;
 
-    await query('BEGIN');
-
-    try {
-      await query(
+    const newTemplate = await withTransaction(async (client) => {
+      await client.query(
         'UPDATE supply_agreement_templates SET is_active = false WHERE is_active = true'
       );
 
-      const newTemplate = await queryOne<SupplyAgreementRecord>(
+      const { rows } = await client.query<SupplyAgreementRecord>(
         `INSERT INTO supply_agreement_templates (title, content, version, is_active, updated_by)
          VALUES ($1, $2, $3, true, $4)
          RETURNING id, title, content, version, is_active, updated_by, created_at, updated_at`,
         [title, content, nextVersion, session.user.id]
       );
 
-      await query('COMMIT');
+      return rows[0] ?? null;
+    });
 
-      securityLogger.logAdminAction(
-        session.user.id,
-        session.user.email,
-        'update_supply_agreement_template',
-        newTemplate?.id || 'unknown',
-        ip,
-        { version: nextVersion, title, contentLength: content.length }
-      );
+    securityLogger.logAdminAction(
+      session.user.id,
+      session.user.email,
+      'update_supply_agreement_template',
+      newTemplate?.id || 'unknown',
+      ip,
+      { version: nextVersion, title, contentLength: content.length }
+    );
 
-      return NextResponse.json({
-        success: true,
-        template: newTemplate,
-        message: `Version ${nextVersion} saved successfully`,
-      });
-    } catch (error) {
-      await query('ROLLBACK');
-      throw error;
-    }
+    return NextResponse.json({
+      success: true,
+      template: newTemplate,
+      message: `Version ${nextVersion} saved successfully`,
+    });
   } catch (error) {
     console.error('Error saving supply agreement template:', error);
     securityLogger.logError('Failed to save supply agreement template', error, ip);

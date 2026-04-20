@@ -1,4 +1,4 @@
-import { Pool } from '@neondatabase/serverless';
+import { Pool } from 'pg';
 import { addressSchema } from './validation';
 import { formatPrice } from './utils';
 import { isProductEligibleForState } from './state-eligibility';
