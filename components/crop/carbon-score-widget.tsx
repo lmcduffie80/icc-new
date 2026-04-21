@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Leaf, ChevronDown, ChevronUp, Award, TrendingUp, Sprout, Wind, Droplets } from 'lucide-react';
 import type { CarbonScore } from '@/lib/carbon-scoring';
+import type { CarbonCreditPrices } from '@/app/api/carbon-credit-prices/route';
 
 interface CarbonScoreWidgetProps {
   carbonScore: CarbonScore | null;
@@ -54,6 +55,20 @@ function BreakdownBar({ label, value, maxValue = 3, icon }: BreakdownBarProps) {
 
 export function CarbonScoreWidget({ carbonScore, acres, defaultExpanded = false }: CarbonScoreWidgetProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
+  const [livePrices, setLivePrices] = useState<CarbonCreditPrices | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/carbon-credit-prices')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: CarbonCreditPrices | null) => {
+        if (!cancelled && data) setLivePrices(data);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   if (!carbonScore) {
     return (
@@ -66,6 +81,13 @@ export function CarbonScoreWidget({ carbonScore, acres, defaultExpanded = false 
 
   const colors = scoreColor(carbonScore.total_score);
   const cert = CERT_CONFIG[carbonScore.certification_level];
+
+  // Recompute potential value using live prices when available.
+  const livePricePerTon = livePrices ? livePrices[carbonScore.certification_level] : null;
+  const potentialValue =
+    livePricePerTon != null
+      ? Math.round(carbonScore.estimated_credits * livePricePerTon * 100) / 100
+      : carbonScore.potential_value;
 
   return (
     <div className="space-y-3">
@@ -120,12 +142,22 @@ export function CarbonScoreWidget({ carbonScore, acres, defaultExpanded = false 
             <div className="rounded-lg bg-white/70 px-3 py-2">
               <p className="text-xs text-emerald-600">Potential Value</p>
               <p className="text-sm font-bold text-emerald-800">
-                ${carbonScore.potential_value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                ${potentialValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </p>
             </div>
           </div>
           <p className="text-xs text-emerald-600 mt-2">
-            Based on {acres.toLocaleString()} acres at current {carbonScore.certification_level} carbon credit prices
+            {livePrices && livePricePerTon != null ? (
+              <>
+                {acres.toLocaleString()} acres × ${livePricePerTon.toFixed(2)}/t CO₂e ({carbonScore.certification_level})
+                {' · '}
+                <span className={livePrices.live ? 'text-emerald-700 font-medium' : 'text-amber-700'}>
+                  {livePrices.live ? 'Live' : 'Reference'}: {livePrices.source}
+                </span>
+              </>
+            ) : (
+              <>Based on {acres.toLocaleString()} acres at current {carbonScore.certification_level} carbon credit prices</>
+            )}
           </p>
         </div>
       )}

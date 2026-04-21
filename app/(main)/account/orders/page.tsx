@@ -261,30 +261,16 @@ export default function OrdersPage() {
                   <div className="p-6">
                     <div className="space-y-4">
                       {order.items.map((item) => {
-                        // AGGRESSIVE S3 URL DETECTION: Convert ANY URL containing amazonaws.com to proxy
-                        // This prevents Next.js Image errors for all S3 URL formats
-                        let imageUrl: string;
-                        if (!item.image) {
-                          imageUrl = '/placeholder.png';
-                        } else if (item.image.includes('/api/images/proxy')) {
-                          // Already a proxy URL
-                          imageUrl = item.image;
-                        } else if (item.image.includes('amazonaws.com')) {
-                          // S3 URL - convert to proxy immediately
-                          imageUrl = `/api/images/proxy?url=${encodeURIComponent(item.image)}`;
-                        } else {
-                          // Try getImageProxyUrl first, then fallback to original
-                          imageUrl = getImageProxyUrl(item.image) || item.image;
-                        }
-                        
+                        const imageUrl = getImageProxyUrl(item.image, 128) || '/placeholder.png';
+
                         return (
                           <div key={item.id} className="flex items-center gap-4">
-                            <div className="h-16 w-16 rounded-lg bg-muted overflow-hidden flex-shrink-0 relative">
+                            <div className="h-16 w-16 rounded-lg bg-white border border-border overflow-hidden flex-shrink-0 relative">
                               <Image
                                 src={imageUrl}
                                 alt={item.name}
                                 fill
-                                className="object-cover"
+                                className="object-contain p-1"
                                 unoptimized={true}
                                 onError={(e) => {
                                   const target = e.currentTarget;

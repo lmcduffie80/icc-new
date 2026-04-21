@@ -17,6 +17,7 @@ import {
   Leaf,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { CommodityPriceBanner } from '@/components/commodity-price-banner';
 
 interface CropPlan {
   id: number;
@@ -131,6 +132,8 @@ export default function CropPlanningDashboard() {
       </div>
 
       <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6 lg:px-8">
+        <CommodityPriceBanner />
+
         {/* Quick links */}
         <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
           <Link

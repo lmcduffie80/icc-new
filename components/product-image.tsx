@@ -9,17 +9,13 @@ interface ProductImageProps {
   alt: string;
   sizes?: string;
   className?: string;
+  proxyWidth?: number;
 }
 
-export function ProductImage({ src, alt, sizes, className }: ProductImageProps) {
+export function ProductImage({ src, alt, sizes, className, proxyWidth = 1200 }: ProductImageProps) {
   const [imgSrc, setImgSrc] = useState<string>(
-    getImageProxyUrl(src) || src || '/placeholder.png'
+    getImageProxyUrl(src, proxyWidth) || src || '/placeholder.png'
   );
-
-  const isUnoptimized =
-    imgSrc.includes('/api/images/proxy') ||
-    imgSrc.includes('s3.amazonaws.com') ||
-    imgSrc.includes('.s3.');
 
   return (
     <Image
@@ -29,7 +25,7 @@ export function ProductImage({ src, alt, sizes, className }: ProductImageProps) 
       sizes={sizes}
       placeholder="empty"
       className={className}
-      unoptimized={isUnoptimized}
+      unoptimized
       onError={() => setImgSrc('/placeholder.png')}
     />
   );

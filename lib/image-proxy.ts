@@ -57,25 +57,21 @@ function getKeyFromUrl(url: string): string | null {
 
 /**
  * Convert S3 URL to Next.js image proxy URL
- * This allows Next.js Image component to fetch images from private S3 buckets
- * Safe to use in client components
+ * Safe to use in client components.
+ * @param width  Max pixel width the proxy should resize to (default 1200)
  */
-export function getImageProxyUrl(s3Url: string | null | undefined): string | null {
+export function getImageProxyUrl(s3Url: string | null | undefined, width = 1200): string | null {
   if (!s3Url) return null;
-  
-  // Check if it's already a proxy URL
+
   if (s3Url.includes('/api/images/proxy')) {
     return s3Url;
   }
-  
-  // Check if it's an S3 URL
+
   const s3Key = getKeyFromUrl(s3Url);
   if (!s3Key) {
-    // Not an S3 URL, return as-is (might be external URL)
     return s3Url;
   }
-  
-  // Convert to proxy URL
-  return `/api/images/proxy?url=${encodeURIComponent(s3Url)}`;
+
+  return `/api/images/proxy?url=${encodeURIComponent(s3Url)}&w=${width}`;
 }
 

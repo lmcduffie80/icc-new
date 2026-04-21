@@ -9,6 +9,7 @@ import { signOut } from '@/lib/auth-client';
 import { Button } from '@/components/ui/button';
 import { LogOut, ChevronRight } from 'lucide-react';
 import { accountNavItems } from '@/lib/account-navigation';
+import { CommodityPriceBanner } from '@/components/commodity-price-banner';
 
 export default function AccountPage() {
   const router = useRouter();
@@ -55,6 +56,9 @@ export default function AccountPage() {
             Manage your account settings and view your orders
           </p>
         </div>
+
+        {/* Commodity Prices */}
+        <CommodityPriceBanner />
 
         {/* User Card */}
         <div className="bg-card border border-border rounded-xl p-6 mb-8">

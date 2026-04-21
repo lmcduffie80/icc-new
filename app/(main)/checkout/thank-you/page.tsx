@@ -116,9 +116,7 @@ function getTrackingUrl(carrier: string, trackingNumber: string): string {
 
 function getItemImageUrl(image: string | null | undefined): string {
   if (!image) return '/placeholder.png';
-  if (image.includes('/api/images/proxy')) return image;
-  if (image.includes('amazonaws.com')) return `/api/images/proxy?url=${encodeURIComponent(image)}`;
-  return getImageProxyUrl(image) || image;
+  return getImageProxyUrl(image, 128) || image;
 }
 
 function ThankYouContent() {
@@ -309,12 +307,12 @@ function ThankYouContent() {
             <div className="space-y-4">
               {order.items.map((item) => (
                 <div key={item.id} className="flex items-center gap-4">
-                  <div className="h-16 w-16 rounded-lg bg-muted overflow-hidden flex-shrink-0 relative">
+                  <div className="h-16 w-16 rounded-lg bg-white border border-border overflow-hidden flex-shrink-0 relative">
                     <Image
                       src={getItemImageUrl(item.image)}
                       alt={item.name}
                       fill
-                      className="object-cover"
+                      className="object-contain p-1"
                       unoptimized={true}
                       onError={(e) => {
                         const target = e.currentTarget;

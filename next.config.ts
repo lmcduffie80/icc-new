@@ -1,5 +1,17 @@
 import type { NextConfig } from "next";
 import path from "path";
+import { existsSync, readFileSync } from "fs";
+
+// Turbopack workaround: manually parse .env.local so all vars (e.g. ANTHROPIC_API_KEY)
+// are available at runtime — Turbopack has a known bug where some vars go missing.
+const envPath = path.join(__dirname, ".env.local");
+if (existsSync(envPath)) {
+  const lines = readFileSync(envPath, "utf8").split("\n");
+  for (const line of lines) {
+    const m = line.match(/^([A-Z][A-Z0-9_]*)="?([^"]*)"?\s*$/);
+    if (m && !process.env[m[1]]) process.env[m[1]] = m[2];
+  }
+}
 
 const nextConfig: NextConfig = {
   turbopack: {

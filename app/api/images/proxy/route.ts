@@ -1,7 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
+import sharp from 'sharp';
 import { getFileFromS3, getKeyFromUrl } from '@/lib/s3';
 import { getClientIp } from '@/lib/rate-limit';
 import { securityLogger } from '@/lib/security-logger';
+
+const IMAGE_CONTENT_TYPES = new Set([
+  'image/jpeg',
+  'image/jpg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+  'image/avif',
+]);
 
 /**
  * GET /api/images/proxy?url=<s3-url>
@@ -12,6 +22,8 @@ export async function GET(request: NextRequest) {
   const ip = getClientIp(request);
   const searchParams = request.nextUrl.searchParams;
   const imageUrl = searchParams.get('url');
+  const requestedWidth = parseInt(searchParams.get('w') || '1200', 10);
+  const width = Math.min(Math.max(requestedWidth, 16), 3840);
 
   if (!imageUrl) {
     return NextResponse.json({ error: 'URL parameter is required' }, { status: 400 });
@@ -57,23 +69,36 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Determine if this is a PDF that should be viewed inline
     const isPDF = file.contentType === 'application/pdf';
+    const isImage = IMAGE_CONTENT_TYPES.has(file.contentType);
+
+    if (isImage) {
+      const optimized = await sharp(file.buffer)
+        .resize(width, undefined, { fit: 'inside', withoutEnlargement: true })
+        .webp({ quality: 82 })
+        .toBuffer();
+
+      return new NextResponse(new Uint8Array(optimized), {
+        headers: {
+          'Content-Type': 'image/webp',
+          'Cache-Control': 'public, max-age=31536000, immutable',
+          'X-Content-Type-Options': 'nosniff',
+          'Vary': 'Accept',
+        },
+      });
+    }
+
     const headers: HeadersInit = {
       'Content-Type': file.contentType,
       'Cache-Control': 'public, max-age=31536000, immutable',
       'X-Content-Type-Options': 'nosniff',
     };
-    
-    // For PDFs, use inline disposition so they can be viewed in browser
+
     if (isPDF) {
       headers['Content-Disposition'] = 'inline';
     }
-    
-    // Return file with proper headers (works for images, PDFs, and other documents)
-    return new NextResponse(new Uint8Array(file.buffer), {
-      headers,
-    });
+
+    return new NextResponse(new Uint8Array(file.buffer), { headers });
   } catch (error) {
     securityLogger.logError('Failed to proxy file', error, ip);
 

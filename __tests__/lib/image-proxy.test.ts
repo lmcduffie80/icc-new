@@ -44,42 +44,42 @@ describe('Image Proxy Client Utilities', () => {
         const s3Url = 'https://bucket.s3.amazonaws.com/images/photo.jpg';
         const result = getImageProxyUrl(s3Url);
 
-        expect(result).toBe(`/api/images/proxy?url=${encodeURIComponent(s3Url)}`);
+        expect(result).toBe(`/api/images/proxy?url=${encodeURIComponent(s3Url)}&w=1200`);
       });
 
       it('should convert S3 URL with region to proxy URL', () => {
         const s3Url = 'https://bucket.s3.us-east-1.amazonaws.com/image.jpg';
         const result = getImageProxyUrl(s3Url);
 
-        expect(result).toBe(`/api/images/proxy?url=${encodeURIComponent(s3Url)}`);
+        expect(result).toBe(`/api/images/proxy?url=${encodeURIComponent(s3Url)}&w=1200`);
       });
 
       it('should convert S3 URL with s3- prefix to proxy URL', () => {
         const s3Url = 'https://s3-us-west-2.amazonaws.com/bucket/image.jpg';
         const result = getImageProxyUrl(s3Url);
 
-        expect(result).toBe(`/api/images/proxy?url=${encodeURIComponent(s3Url)}`);
+        expect(result).toBe(`/api/images/proxy?url=${encodeURIComponent(s3Url)}&w=1200`);
       });
 
       it('should convert bucket subdomain S3 URL', () => {
         const s3Url = 'https://test-bucket.s3.amazonaws.com/photo.png';
         const result = getImageProxyUrl(s3Url);
 
-        expect(result).toBe(`/api/images/proxy?url=${encodeURIComponent(s3Url)}`);
+        expect(result).toBe(`/api/images/proxy?url=${encodeURIComponent(s3Url)}&w=1200`);
       });
 
       it('should handle nested paths in S3 URL', () => {
         const s3Url = 'https://bucket.s3.amazonaws.com/uploads/2024/01/15/photo.jpg';
         const result = getImageProxyUrl(s3Url);
 
-        expect(result).toBe(`/api/images/proxy?url=${encodeURIComponent(s3Url)}`);
+        expect(result).toBe(`/api/images/proxy?url=${encodeURIComponent(s3Url)}&w=1200`);
       });
 
       it('should handle S3 URL with query parameters', () => {
         const s3Url = 'https://bucket.s3.amazonaws.com/image.jpg?v=123';
         const result = getImageProxyUrl(s3Url);
 
-        expect(result).toBe(`/api/images/proxy?url=${encodeURIComponent(s3Url)}`);
+        expect(result).toBe(`/api/images/proxy?url=${encodeURIComponent(s3Url)}&w=1200`);
       });
     });
 
@@ -124,7 +124,7 @@ describe('Image Proxy Client Utilities', () => {
         const s3Url = 'https://any-bucket.s3.amazonaws.com/image.jpg';
         const result = getImageProxyUrl(s3Url);
 
-        expect(result).toBe(`/api/images/proxy?url=${encodeURIComponent(s3Url)}`);
+        expect(result).toBe(`/api/images/proxy?url=${encodeURIComponent(s3Url)}&w=1200`);
       });
     });
 
@@ -133,14 +133,14 @@ describe('Image Proxy Client Utilities', () => {
         const s3Url = 'https://bucket.s3.amazonaws.com/images/photo%20name.jpg';
         const result = getImageProxyUrl(s3Url);
 
-        expect(result).toBe(`/api/images/proxy?url=${encodeURIComponent(s3Url)}`);
+        expect(result).toBe(`/api/images/proxy?url=${encodeURIComponent(s3Url)}&w=1200`);
       });
 
       it('should handle URL with unicode characters', () => {
         const s3Url = 'https://bucket.s3.amazonaws.com/images/文件.jpg';
         const result = getImageProxyUrl(s3Url);
 
-        expect(result).toBe(`/api/images/proxy?url=${encodeURIComponent(s3Url)}`);
+        expect(result).toBe(`/api/images/proxy?url=${encodeURIComponent(s3Url)}&w=1200`);
       });
 
       it('should handle malformed URL gracefully', () => {
