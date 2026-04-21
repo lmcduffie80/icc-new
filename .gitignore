@@ -60,3 +60,8 @@ shipboss_env/
 *.tsbuildinfo
 next-env.d.ts
 .env*.local
+
+# Local AI tooling (Claude Code worktrees, superpowers scratch output)
+.claude/
+.superpowers/
+docs/superpowers/
