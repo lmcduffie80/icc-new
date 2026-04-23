@@ -464,6 +464,134 @@ export async function getFreightQuotesCached(
   return getFreightQuotes(items, shipTo, shipFrom, liftgateRequired);
 }
 
+export interface FreightLabelContact {
+  name: string;
+  phone: string;
+  email?: string;
+}
+
+export interface FreightLabelInput {
+  quoteId: string;
+  from: FreightLabelContact;
+  to: FreightLabelContact;
+  /** Pickup window ready time in HH:MM format (defaults to "08:00") */
+  pickupReadyTime?: string;
+  /** Pickup window close time in HH:MM format (defaults to "17:00") */
+  pickupCloseTime?: string;
+}
+
+export interface FreightLabelResult {
+  trackingNumber: string;
+  labelUrl?: string;
+  billOfLadingUrl?: string;
+  estimatedCost?: number;
+}
+
+interface ShipBossFreightLabelItem {
+  tracking_number: string;
+  label?: { link?: string; expires?: string };
+  bill_of_lading?: { link?: string; expires?: string };
+  estimated_cost?: number;
+}
+
+interface ShipBossFreightLabelResponse {
+  status: string;
+  data?: ShipBossFreightLabelItem[];
+  message?: string;
+}
+
+/**
+ * Book an LTL freight shipment via the ShipBoss create-freight-label endpoint.
+ *
+ * Requires a quote_id returned from get-freight-rates. The full origin/destination
+ * addresses are already embedded in the quote — only contact name/phone are needed here.
+ */
+export async function bookFreightLabel(input: FreightLabelInput): Promise<FreightLabelResult> {
+  const token = process.env.SHIPPING_ICC;
+  if (!token) {
+    throw new Error('ShipBoss is not configured. Set SHIPPING_ICC to enable freight label creation.');
+  }
+
+  const requestBody = {
+    addresses: {
+      from: {
+        name: input.from.name,
+        phone: input.from.phone,
+        ...(input.from.email ? { contact_email: input.from.email } : {}),
+      },
+      to: {
+        name: input.to.name,
+        phone: input.to.phone,
+        ...(input.to.email ? { contact_email: input.to.email } : {}),
+      },
+    },
+    quote_id: input.quoteId,
+    pickup: {
+      ready_time: input.pickupReadyTime ?? '08:00',
+      close_time: input.pickupCloseTime ?? '17:00',
+    },
+    test: process.env.NODE_ENV !== 'production',
+  };
+
+  console.log('[freight-quote] Creating freight label:', JSON.stringify(requestBody));
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+  let response: Response;
+  try {
+    response = await fetch(`${SHIPBOSS_BASE_URL}/create-freight-label`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestBody),
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+
+  const text = await response.text();
+  console.log(`[freight-quote] create-freight-label response (${response.status}):`, text.slice(0, 500));
+
+  if (text.trimStart().startsWith('<!DOCTYPE') || text.trimStart().startsWith('<html')) {
+    throw new Error(
+      'ShipBoss returned an HTML error page for create-freight-label. This may indicate a service outage.'
+    );
+  }
+
+  let parsed: ShipBossFreightLabelResponse;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new Error(
+      `ShipBoss create-freight-label returned unexpected response (HTTP ${response.status}): ${text.slice(0, 200)}`
+    );
+  }
+
+  if (!response.ok || parsed.status !== 'success') {
+    throw new Error(
+      `ShipBoss create-freight-label failed (${response.status}): ${parsed.message ?? text}`
+    );
+  }
+
+  const item = Array.isArray(parsed.data) ? parsed.data[0] : undefined;
+  if (!item?.tracking_number) {
+    throw new Error(
+      `ShipBoss create-freight-label succeeded but returned no tracking number. Response: ${text.slice(0, 300)}`
+    );
+  }
+
+  return {
+    trackingNumber: item.tracking_number,
+    labelUrl: item.label?.link,
+    billOfLadingUrl: item.bill_of_lading?.link,
+    estimatedCost: item.estimated_cost,
+  };
+}
+
 /**
  * Fetch live shipping rates from ShipBoss.
  *

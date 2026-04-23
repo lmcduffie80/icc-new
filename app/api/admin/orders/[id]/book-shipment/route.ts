@@ -2,13 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { verifyAdminAuth } from '@/lib/admin-middleware';
 import { query, queryOne } from '@/lib/db';
 import { securityLogger } from '@/lib/security-logger';
-import { getFreightQuotes, estimateWeightLbs } from '@/lib/freight-quote';
+import { getFreightQuotes, estimateWeightLbs, bookFreightLabel } from '@/lib/freight-quote';
 import type { FreightShipFromAddress, FreightShipItem } from '@/lib/freight-quote';
-import {
-  bookLtlFreight,
-  isFreightBookingConfigured,
-  type FreightBookingInput,
-} from '@/lib/shipboss-freight-booking';
 
 const SHIPBOSS_BASE_URL = 'https://ship.shipboss.io/api/public/v1';
 const LTL_WEIGHT_THRESHOLD = 150;
@@ -239,8 +234,7 @@ export async function POST(
     const weightLbs = estimateWeightLbs(items);
     const isLtl = weightLbs > LTL_WEIGHT_THRESHOLD;
 
-    // LTL freight: ShipBoss public API does not support booking LTL.
-    // Attempt headless browser automation, fall back to manual web booking.
+    // LTL freight: book via ShipBoss create-freight-label API using the quote_id.
     if (isLtl) {
       const freshRates = await getFreightQuotes(items, shipTo, shipFrom, liftgateRequired);
       const savedCarrier = order.shipping_carrier?.toUpperCase();
@@ -249,142 +243,86 @@ export async function POST(
           ? freshRates.find((r) => r.carrier.toUpperCase() === savedCarrier)
           : null) ?? freshRates[0];
 
-      if (matchedRate) {
-        await query(
-          `UPDATE orders SET freight_quote_id = $1, updated_at = NOW() WHERE id = $2`,
-          [matchedRate.quoteId, id]
+      if (!matchedRate) {
+        return NextResponse.json(
+          { error: 'No LTL freight rates available for this order at this time. Please try again.' },
+          { status: 422 }
         );
       }
 
-      // If web automation credentials are configured, attempt headless booking
-      if (isFreightBookingConfigured()) {
-        console.log('[book-shipment] LTL detected — attempting headless browser booking...');
-
-        const cleanPhoneLtl = (raw: string | null | undefined, fallback: string) => {
-          if (!raw) return fallback;
-          const digits = raw.replace(/\s*(ext\.?|x)\s*\d+$/i, '').replace(/\D/g, '');
-          return digits || fallback;
-        };
-
-        const freightInput: FreightBookingInput = {
-          fromAddress: {
-            name: warehouse.name,
-            street: warehouse.address_street,
-            city: warehouse.address_city,
-            state: warehouse.address_state,
-            zip: warehouse.address_zip,
-            country: 'US',
-            phone: cleanPhoneLtl(warehouse.phone, '8005551234'),
-            email: warehouse.email ?? 'shipping@innovativecropcare.com',
-          },
-          toAddress: {
-            name:
-              [addr.firstName, addr.lastName].filter(Boolean).join(' ') || 'Customer',
-            street: addr.line1,
-            city: addr.city,
-            state: addr.state,
-            zip: addr.zipCode,
-            country: addr.country ?? 'US',
-            phone: cleanPhoneLtl(addr.phone, '0000000000'),
-            email: addr.email ?? '',
-          },
-          packages: items.map((item) => {
-            const uom = item.unitOfMeasure?.toLowerCase() ?? '';
-            const isTote = uom.includes('tote') || uom.includes('tank');
-            // Use estimateWeightLbs for a single unit so tote/tank defaults (2,200 lbs)
-            // and carton weights are resolved consistently with the freight-quote library.
-            const unitWeight = estimateWeightLbs([{ ...item, quantity: 1 }]);
-            return {
-              weight: Math.max(1, Math.round(unitWeight * item.quantity)),
-              length: item.cartonLength ? Math.round(item.cartonLength) : 48,
-              width: item.cartonWidth ? Math.round(item.cartonWidth) : (isTote ? 48 : 40),
-              height: item.cartonHeight ? Math.round(item.cartonHeight) : (isTote ? 60 : 48),
-              quantity: item.quantity,
-              commodity: item.name ?? 'General Freight',
-              freightClass: item.freightClass ? parseInt(item.freightClass, 10) : 70,
-            };
-          }),
-          pickupDate: new Date().toISOString().split('T')[0],
-        };
-
-        const bookingResult = await bookLtlFreight(freightInput);
-
-        if (bookingResult.success) {
-          const bookingId =
-            bookingResult.trackingNumber ?? bookingResult.shipmentId ?? `ltl-${Date.now()}`;
-
-          const updatedMeta = {
-            ...meta,
-            shipboss_booking_id: bookingId,
-            shipboss_booked_at: new Date().toISOString(),
-            ...(bookingResult.trackingNumber
-              ? { tracking_number: bookingResult.trackingNumber }
-              : {}),
-            ...(bookingResult.billOfLadingUrl
-              ? { bol_url: bookingResult.billOfLadingUrl }
-              : {}),
-            ...(bookingResult.carrier
-              ? { booked_carrier: bookingResult.carrier }
-              : {}),
-            booking_method: 'automated_web',
-          };
-
-          await query(
-            `UPDATE orders SET metadata = $1, updated_at = NOW() WHERE id = $2`,
-            [JSON.stringify(updatedMeta), id]
-          );
-
-          const ip =
-            request.headers.get('x-forwarded-for') ||
-            request.headers.get('x-real-ip') ||
-            'unknown';
-
-          securityLogger.logEvent({
-            type: 'admin_action',
-            ip,
-            path: `/api/admin/orders/${id}/book-shipment`,
-            method: 'POST',
-            details: {
-              action: 'book_ltl_shipment_automated',
-              orderId: id,
-              bookingId,
-              carrier: bookingResult.carrier,
-              shipmentId: bookingResult.shipmentId,
-            },
-            userId: authResult.session?.admin_user_id,
-            severity: 'medium',
-          });
-
-          return NextResponse.json({
-            success: true,
-            bookingId,
-            trackingNumber: bookingResult.trackingNumber ?? null,
-            bolUrl: bookingResult.billOfLadingUrl ?? null,
-            carrier: bookingResult.carrier ?? null,
-            automated: true,
-          });
-        }
-
-        // Automation failed — fall through to manual fallback
-        console.warn(
-          '[book-shipment] Automated LTL booking failed, falling back to manual:',
-          bookingResult.error
-        );
-      }
-
-      // Fallback: direct admin to book via ShipBoss web UI
-      return NextResponse.json(
-        {
-          error: isFreightBookingConfigured()
-            ? 'Automated booking failed. Please book through the ShipBoss web interface.'
-            : 'LTL freight shipments must be booked through the ShipBoss web interface.',
-          ltlBookingRequired: true,
-          bookingUrl: 'https://ship.shipboss.io/ship',
-          quoteId: matchedRate?.quoteId ?? order.freight_quote_id,
-          carrier: matchedRate?.carrier ?? order.shipping_carrier,
-        },
-        { status: 422 }
+      await query(
+        `UPDATE orders SET freight_quote_id = $1, updated_at = NOW() WHERE id = $2`,
+        [matchedRate.quoteId, id]
       );
+
+      const cleanPhoneLtl = (raw: string | null | undefined, fallback: string) => {
+        if (!raw) return fallback;
+        const digits = raw.replace(/\s*(ext\.?|x)\s*\d+$/i, '').replace(/\D/g, '');
+        return digits || fallback;
+      };
+
+      console.log('[book-shipment] LTL detected — booking via create-freight-label API...');
+
+      const labelResult = await bookFreightLabel({
+        quoteId: matchedRate.quoteId,
+        from: {
+          name: warehouse.name,
+          phone: cleanPhoneLtl(warehouse.phone, '8005551234'),
+          email: warehouse.email ?? 'shipping@innovativecropcare.com',
+        },
+        to: {
+          name: [addr.firstName, addr.lastName].filter(Boolean).join(' ') || 'Customer',
+          phone: cleanPhoneLtl(addr.phone, '0000000000'),
+          email: addr.email ?? undefined,
+        },
+      });
+
+      const bookingId = labelResult.trackingNumber;
+
+      const updatedMeta = {
+        ...meta,
+        shipboss_booking_id: bookingId,
+        shipboss_booked_at: new Date().toISOString(),
+        tracking_number: labelResult.trackingNumber,
+        ...(labelResult.billOfLadingUrl ? { bol_url: labelResult.billOfLadingUrl } : {}),
+        ...(labelResult.labelUrl ? { shipboss_label_url: labelResult.labelUrl } : {}),
+        booked_carrier: matchedRate.carrier,
+        booking_method: 'api',
+      };
+
+      await query(
+        `UPDATE orders SET metadata = $1, updated_at = NOW() WHERE id = $2`,
+        [JSON.stringify(updatedMeta), id]
+      );
+
+      const ip =
+        request.headers.get('x-forwarded-for') ||
+        request.headers.get('x-real-ip') ||
+        'unknown';
+
+      securityLogger.logEvent({
+        type: 'admin_action',
+        ip,
+        path: `/api/admin/orders/${id}/book-shipment`,
+        method: 'POST',
+        details: {
+          action: 'book_ltl_shipment',
+          orderId: id,
+          bookingId,
+          carrier: matchedRate.carrier,
+          quoteId: matchedRate.quoteId,
+        },
+        userId: authResult.session?.admin_user_id,
+        severity: 'medium',
+      });
+
+      return NextResponse.json({
+        success: true,
+        bookingId,
+        trackingNumber: labelResult.trackingNumber,
+        bolUrl: labelResult.billOfLadingUrl ?? null,
+        labelUrl: labelResult.labelUrl ?? null,
+      });
     }
 
     // Parcel: fetch fresh rates and use create-label endpoint
