@@ -478,10 +478,19 @@ export interface FreightLabelInput {
   pickupReadyTime?: string;
   /** Pickup window close time in HH:MM format (defaults to "17:00") */
   pickupCloseTime?: string;
+  /** Delivery window date in yyyy-mm-dd. Defaults to today + 3 business days. */
+  deliveryDate?: string;
+  /** Delivery window ready time in HH:MM (defaults to "08:00") */
+  deliveryReadyTime?: string;
+  /** Delivery window close time in HH:MM (defaults to "17:00") */
+  deliveryCloseTime?: string;
 }
 
 export interface FreightLabelResult {
-  trackingNumber: string;
+  /** Carrier-assigned tracking number — may be null for LTL until carrier pickup */
+  trackingNumber: string | null;
+  /** ShipBoss shipment reference ID (always present) */
+  shipmentId: string;
   labelUrl?: string;
   billOfLadingUrl?: string;
   estimatedCost?: number;
@@ -496,8 +505,9 @@ interface ShipBossFreightLabelItem {
 
 interface ShipBossFreightLabelResponse {
   status: string;
-  data?: ShipBossFreightLabelItem[];
+  data?: ShipBossFreightLabelItem[] | { errors?: unknown };
   message?: string;
+  errors?: unknown;
 }
 
 /**
@@ -512,15 +522,29 @@ export async function bookFreightLabel(input: FreightLabelInput): Promise<Freigh
     throw new Error('ShipBoss is not configured. Set SHIPPING_ICC to enable freight label creation.');
   }
 
+  // Default the delivery date to 3 business days from today (skips weekends).
+  const defaultDeliveryDate = (() => {
+    const d = new Date();
+    let daysAdded = 0;
+    while (daysAdded < 3) {
+      d.setDate(d.getDate() + 1);
+      const dow = d.getDay();
+      if (dow !== 0 && dow !== 6) daysAdded++;
+    }
+    return d.toISOString().split('T')[0];
+  })();
+
   const requestBody = {
     addresses: {
       from: {
         name: input.from.name,
+        contact_name: input.from.name,
         phone: input.from.phone,
         ...(input.from.email ? { contact_email: input.from.email } : {}),
       },
       to: {
         name: input.to.name,
+        contact_name: input.to.name,
         phone: input.to.phone,
         ...(input.to.email ? { contact_email: input.to.email } : {}),
       },
@@ -530,7 +554,11 @@ export async function bookFreightLabel(input: FreightLabelInput): Promise<Freigh
       ready_time: input.pickupReadyTime ?? '08:00',
       close_time: input.pickupCloseTime ?? '17:00',
     },
-    test: process.env.NODE_ENV !== 'production',
+    delivery_window: {
+      date: input.deliveryDate ?? defaultDeliveryDate,
+      ready_time: input.deliveryReadyTime ?? '08:00',
+      close_time: input.deliveryCloseTime ?? '17:00',
+    },
   };
 
   console.log('[freight-quote] Creating freight label:', JSON.stringify(requestBody));
@@ -572,20 +600,55 @@ export async function bookFreightLabel(input: FreightLabelInput): Promise<Freigh
   }
 
   if (!response.ok || parsed.status !== 'success') {
+    const nestedErrors =
+      !Array.isArray(parsed.data) && parsed.data && typeof parsed.data === 'object'
+        ? (parsed.data as { errors?: unknown }).errors
+        : undefined;
+    const errorList = parsed.errors ?? nestedErrors;
+    const formattedErrors = Array.isArray(errorList)
+      ? errorList
+          .map((e) =>
+            typeof e === 'string' ? e : typeof e === 'object' && e !== null ? JSON.stringify(e) : String(e)
+          )
+          .join('; ')
+      : typeof errorList === 'string'
+        ? errorList
+        : undefined;
     throw new Error(
-      `ShipBoss create-freight-label failed (${response.status}): ${parsed.message ?? text}`
+      `ShipBoss create-freight-label failed (${response.status}): ${
+        formattedErrors ?? parsed.message ?? text.slice(0, 500)
+      }`
     );
   }
 
-  const item = Array.isArray(parsed.data) ? parsed.data[0] : undefined;
-  if (!item?.tracking_number) {
+  // ShipBoss returns data as either an array or a keyed object ({ "<shipmentId>": { ... } }).
+  let item: ShipBossFreightLabelItem | undefined;
+  let shipmentId = `ltl-${Date.now()}`;
+
+  if (Array.isArray(parsed.data)) {
+    item = parsed.data[0];
+  } else if (parsed.data && typeof parsed.data === 'object' && !('errors' in parsed.data)) {
+    // Keyed object — the key is the ShipBoss shipment reference ID
+    const entries = Object.entries(parsed.data as Record<string, unknown>);
+    if (entries.length > 0) {
+      const [key, value] = entries[0];
+      shipmentId = key;
+      if (value && typeof value === 'object') {
+        item = value as ShipBossFreightLabelItem;
+      }
+    }
+  }
+
+  if (!item) {
     throw new Error(
-      `ShipBoss create-freight-label succeeded but returned no tracking number. Response: ${text.slice(0, 300)}`
+      `ShipBoss create-freight-label succeeded but returned no shipment data. Response: ${text.slice(0, 300)}`
     );
   }
 
+  // LTL tracking numbers are assigned by the carrier at pickup, not at booking time.
   return {
-    trackingNumber: item.tracking_number,
+    trackingNumber: item.tracking_number || null,
+    shipmentId,
     labelUrl: item.label?.link,
     billOfLadingUrl: item.bill_of_lading?.link,
     estimatedCost: item.estimated_cost,

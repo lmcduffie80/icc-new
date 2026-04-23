@@ -234,37 +234,54 @@ export async function POST(
     const weightLbs = estimateWeightLbs(items);
     const isLtl = weightLbs > LTL_WEIGHT_THRESHOLD;
 
-    // LTL freight: book via ShipBoss create-freight-label API using the quote_id.
+    // LTL freight: book via ShipBoss create-freight-label API using the saved quote_id.
+    // We use the quote_id the admin already saved (from "Get Live Rates") rather than
+    // re-fetching, because LTL quotes from ShipBoss are intermittent — a fresh call
+    // may return zero rates even when the saved quote is still valid.
     if (isLtl) {
-      const freshRates = await getFreightQuotes(items, shipTo, shipFrom, liftgateRequired);
-      const savedCarrier = order.shipping_carrier?.toUpperCase();
-      const matchedRate =
-        (savedCarrier
-          ? freshRates.find((r) => r.carrier.toUpperCase() === savedCarrier)
-          : null) ?? freshRates[0];
-
-      if (!matchedRate) {
-        return NextResponse.json(
-          { error: 'No LTL freight rates available for this order at this time. Please try again.' },
-          { status: 422 }
-        );
-      }
-
-      await query(
-        `UPDATE orders SET freight_quote_id = $1, updated_at = NOW() WHERE id = $2`,
-        [matchedRate.quoteId, id]
-      );
-
       const cleanPhoneLtl = (raw: string | null | undefined, fallback: string) => {
         if (!raw) return fallback;
         const digits = raw.replace(/\s*(ext\.?|x)\s*\d+$/i, '').replace(/\D/g, '');
         return digits || fallback;
       };
 
-      console.log('[book-shipment] LTL detected — booking via create-freight-label API...');
+      // ShipBoss LTL quote_ids are bare UUIDs; parcel quote_ids use the `parcel:` prefix.
+      // If the saved quote isn't an LTL one (or we don't have one), refetch fresh rates.
+      let quoteIdForBooking = order.freight_quote_id;
+      let carrierForBooking = order.shipping_carrier;
+
+      const isLtlQuoteId =
+        !!quoteIdForBooking && !quoteIdForBooking.startsWith('parcel:');
+
+      if (!isLtlQuoteId) {
+        console.log('[book-shipment] No saved LTL quote — fetching fresh rates...');
+        const freshRates = await getFreightQuotes(items, shipTo, shipFrom, liftgateRequired);
+        const savedCarrier = order.shipping_carrier?.toUpperCase();
+        const matchedRate =
+          (savedCarrier
+            ? freshRates.find((r) => r.carrier.toUpperCase() === savedCarrier)
+            : null) ?? freshRates[0];
+
+        if (!matchedRate) {
+          return NextResponse.json(
+            { error: 'No LTL freight rates available for this order at this time. Please try again.' },
+            { status: 422 }
+          );
+        }
+
+        quoteIdForBooking = matchedRate.quoteId;
+        carrierForBooking = matchedRate.carrier;
+
+        await query(
+          `UPDATE orders SET freight_quote_id = $1, shipping_carrier = $2, updated_at = NOW() WHERE id = $3`,
+          [quoteIdForBooking, carrierForBooking, id]
+        );
+      }
+
+      console.log(`[book-shipment] LTL detected — booking via create-freight-label API with quote_id=${quoteIdForBooking}`);
 
       const labelResult = await bookFreightLabel({
-        quoteId: matchedRate.quoteId,
+        quoteId: quoteIdForBooking!,
         from: {
           name: warehouse.name,
           phone: cleanPhoneLtl(warehouse.phone, '8005551234'),
@@ -277,16 +294,16 @@ export async function POST(
         },
       });
 
-      const bookingId = labelResult.trackingNumber;
+      const bookingId = labelResult.shipmentId;
 
       const updatedMeta = {
         ...meta,
         shipboss_booking_id: bookingId,
         shipboss_booked_at: new Date().toISOString(),
-        tracking_number: labelResult.trackingNumber,
+        ...(labelResult.trackingNumber ? { tracking_number: labelResult.trackingNumber } : {}),
         ...(labelResult.billOfLadingUrl ? { bol_url: labelResult.billOfLadingUrl } : {}),
         ...(labelResult.labelUrl ? { shipboss_label_url: labelResult.labelUrl } : {}),
-        booked_carrier: matchedRate.carrier,
+        ...(carrierForBooking ? { booked_carrier: carrierForBooking } : {}),
         booking_method: 'api',
       };
 
@@ -309,8 +326,8 @@ export async function POST(
           action: 'book_ltl_shipment',
           orderId: id,
           bookingId,
-          carrier: matchedRate.carrier,
-          quoteId: matchedRate.quoteId,
+          carrier: carrierForBooking,
+          quoteId: quoteIdForBooking,
         },
         userId: authResult.session?.admin_user_id,
         severity: 'medium',
@@ -319,7 +336,7 @@ export async function POST(
       return NextResponse.json({
         success: true,
         bookingId,
-        trackingNumber: labelResult.trackingNumber,
+        trackingNumber: labelResult.trackingNumber ?? null,
         bolUrl: labelResult.billOfLadingUrl ?? null,
         labelUrl: labelResult.labelUrl ?? null,
       });
