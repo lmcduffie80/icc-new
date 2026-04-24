@@ -290,16 +290,15 @@ export async function PUT(
           const iccMarginPercent = body.icc_margin_percent !== undefined ? body.icc_margin_percent : (currentProduct.icc_margin_percent ? parseFloat(currentProduct.icc_margin_percent) : null);
           
           if (iccMarginPercent && iccMarginPercent > 0) {
-            // Calculate ICC margin amount
-            const iccMarginAmount = (storePrice * iccMarginPercent) / 100;
-            
-            // Calculate total margin
+            // `icc_margin_percent` is the ICC share of TOTAL MARGIN (not store price).
+            // This matches admin margin-approval and purchase-order calculations.
             const totalMargin = storePrice - supplierPrice;
-            
-            // Calculate customer margin
+            const iccMarginAmount = (totalMargin * iccMarginPercent) / 100;
             const customerMarginAmount = totalMargin - iccMarginAmount;
-            const customerMarginPercent = (customerMarginAmount / storePrice) * 100;
-            
+            const customerMarginPercent = storePrice > 0
+              ? (customerMarginAmount / storePrice) * 100
+              : 0;
+
             allowedUpdates.icc_margin_amount = iccMarginAmount;
             allowedUpdates.customer_margin_percent = customerMarginPercent;
             allowedUpdates.customer_margin_amount = customerMarginAmount;

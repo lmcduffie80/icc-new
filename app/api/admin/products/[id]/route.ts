@@ -338,6 +338,17 @@ export async function PUT(
     let marginApprovalStatus = undefined;
     let marginSubmittedAt = undefined;
 
+    // Extracts a plain YYYY-MM-DD string from any date representation (string,
+    // Date object, or locale string like "Wed Apr 23 2025 00:00:00 GMT-0400").
+    // Guards against pg-types returning DATE columns as JS Date objects when
+    // the query uses SELECT * without an explicit ::text cast.
+    function sanitizeDateParam(value: unknown): string | null {
+      if (value === null || value === undefined || value === '') return null;
+      if (value instanceof Date) return value.toISOString().split('T')[0];
+      const match = String(value).match(/(\d{4}-\d{2}-\d{2})/);
+      return match ? match[1] : null;
+    }
+
     // Helper to normalize margin values for comparison
     function normalizeMarginValue(value: string | number | null | undefined): number {
       if (value === null || value === undefined || value === '') {
@@ -351,15 +362,22 @@ export async function PUT(
     const iccMarginChanged = icc_margin_percent !== undefined && 
       normalizeMarginValue(icc_margin_percent).toFixed(2) !== normalizeMarginValue(existingProduct.icc_margin_percent).toFixed(2);
 
-    const priceChanged = price !== undefined && 
-      normalizeMarginValue(price).toFixed(2) !== normalizeMarginValue(existingProduct.price).toFixed(2);
+    // Use a 0.005 tolerance to avoid false positives from floating-point drift when
+    // the form converts total → per-gallon → total (e.g. $16.00 → $0.0604/gal → $16.01).
+    const priceChanged = price !== undefined &&
+      Math.abs(normalizeMarginValue(price) - normalizeMarginValue(existingProduct.price)) >= 0.005;
 
-    // If price changed for product with approved margins, block it
-    if (priceChanged && existingProduct.supplier_price && existingProduct.margin_approval_status === 'approved') {
-      return NextResponse.json(
-        { error: 'Cannot change price for products with approved margins. Use Margin Approval page to modify.' },
-        { status: 400 }
-      );
+    // The admin form submits the supplier cost as `original_price`, and the UPDATE
+    // below mirrors that value into `supplier_price`. Detect changes against the
+    // existing supplier_price so we know when to recompute margin dollar amounts.
+    const supplierPriceChanged = original_price !== undefined &&
+      Math.abs(normalizeMarginValue(original_price) - normalizeMarginValue(existingProduct.supplier_price)) >= 0.005;
+
+    // If price or supplier_price is intentionally changed for a product with
+    // approved margins, reset margin approval to 'pending' so the new numbers
+    // enter the re-approval workflow.
+    if ((priceChanged || supplierPriceChanged) && existingProduct.supplier_price && existingProduct.margin_approval_status === 'approved') {
+      marginApprovalStatus = 'pending';
     }
 
     if (iccMarginChanged) {
@@ -379,26 +397,38 @@ export async function PUT(
         );
       }
 
-      // Calculate margin values
+      // Calculate margin values using the new inputs
       const storePrice = price !== undefined ? parseFloat(String(price)) : parseFloat(existingProduct.price);
-      const supplierPrice = parseFloat(existingProduct.supplier_price);
-      
-      // Calculate total margin
+      const supplierPrice = original_price !== undefined
+        ? parseFloat(String(original_price))
+        : parseFloat(existingProduct.supplier_price);
       const totalMargin = storePrice - supplierPrice;
-      
-      // Calculate ICC margin amount (ICC's portion of total margin)
+
       iccMarginAmount = (totalMargin * icc_margin_percent) / 100;
-      
-      // Calculate customer margin
       customerMarginAmount = totalMargin - iccMarginAmount;
-      customerMarginPercent = (customerMarginAmount / storePrice) * 100;
-      
+      customerMarginPercent = storePrice > 0 ? (customerMarginAmount / storePrice) * 100 : 0;
+
       // Sync to margin_split_percentage for supplier view
       marginSplitPercentage = icc_margin_percent;
-      
+
       // Set margin status to pending for approval workflow
       marginApprovalStatus = 'pending';
       marginSubmittedAt = new Date().toISOString();
+    } else if ((priceChanged || supplierPriceChanged) && existingProduct.supplier_price && existingProduct.icc_margin_percent) {
+      // Price or supplier cost changed but the margin split stayed the same.
+      // The stored icc_margin_amount / customer_margin_amount are now stale —
+      // recompute them so the supplier-facing Margin Breakdown stays in sync
+      // with the live Margin Preview.
+      const storePrice = price !== undefined ? parseFloat(String(price)) : parseFloat(existingProduct.price);
+      const supplierPrice = original_price !== undefined
+        ? parseFloat(String(original_price))
+        : parseFloat(existingProduct.supplier_price);
+      const existingIccPct = parseFloat(existingProduct.icc_margin_percent);
+      const totalMargin = storePrice - supplierPrice;
+
+      iccMarginAmount = (totalMargin * existingIccPct) / 100;
+      customerMarginAmount = totalMargin - iccMarginAmount;
+      customerMarginPercent = storePrice > 0 ? (customerMarginAmount / storePrice) * 100 : 0;
     }
 
     // Determine if supplier is being newly assigned or changed
@@ -492,9 +522,7 @@ export async function PUT(
         review_count !== undefined ? review_count : existingProduct.review_count,
         minimum_order_qty !== undefined ? minimum_order_qty : existingProduct.minimum_order_qty,
         next_available_quantity !== undefined ? next_available_quantity : existingProduct.next_available_quantity,
-        next_available_date !== undefined 
-          ? (next_available_date === '' || next_available_date === null ? null : next_available_date)
-          : existingProduct.next_available_date,
+        sanitizeDateParam(next_available_date !== undefined ? next_available_date : existingProduct.next_available_date),
         attributes ? JSON.stringify(attributes) : existingProduct.attributes,
         approved_states || existingProduct.approved_states,
         features || existingProduct.features,

@@ -87,6 +87,12 @@ const navGroups: NavGroup[] = [
         icon: <DollarSign className="h-5 w-5" />,
         permission: 'products.approve_margin',
       },
+      {
+        label: 'Competitor Pricing',
+        href: '/admin/competitors',
+        icon: <DollarSign className="h-5 w-5" />,
+        permission: 'products.view',
+      },
     ],
   },
   {

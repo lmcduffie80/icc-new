@@ -789,84 +789,95 @@ export function SupplierProductForm({ product }: SupplierProductFormProps) {
               </div>
             )}
 
-            {/* Margin Breakdown - Read-only display */}
-            {product && product.icc_margin_percent !== undefined && product.icc_margin_percent !== null && product.customer_margin_percent !== undefined && product.customer_margin_percent !== null && (
-              <div className="rounded-lg border border-slate-200 bg-slate-50 p-6">
-                <h3 className="text-lg font-semibold text-slate-900 mb-4 flex items-center justify-between">
-                  <span>Margin Breakdown</span>
-                  <svg className="h-5 w-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                  </svg>
-                </h3>
-                
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-slate-600">Store Price (Customer Pays)</span>
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold text-slate-900">
-                        ${parseFloat(product.price).toFixed(2)}
-                      </span>
-                      <svg className="h-4 w-4 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                      </svg>
-                    </div>
-                  </div>
-                  
-                  <div className="flex justify-between items-center text-sm">
-                    <span className="text-slate-600">ICC Margin ({parseFloat(product.icc_margin_percent).toFixed(1)}%)</span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-blue-600">
-                        -${product.icc_margin_amount ? parseFloat(product.icc_margin_amount).toFixed(2) : '0.00'}
-                      </span>
-                      <svg className="h-4 w-4 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                      </svg>
-                    </div>
-                  </div>
-                  
-                  <div className="flex justify-between items-center text-sm">
-                    <span className="text-slate-600">Customer Savings ({parseFloat(product.customer_margin_percent).toFixed(1)}%)</span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-emerald-600">
-                        -${product.customer_margin_amount ? parseFloat(product.customer_margin_amount).toFixed(2) : '0.00'}
-                      </span>
-                      <svg className="h-4 w-4 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                      </svg>
-                    </div>
-                  </div>
-                  
-                  <div className="pt-3 border-t border-slate-300">
+            {/* Margin Breakdown - Read-only display (computed live from price/supplier_price/icc_margin_percent
+                so legacy rows with stale icc_margin_amount / customer_margin_amount columns still render correctly). */}
+            {product && product.icc_margin_percent !== undefined && product.icc_margin_percent !== null && product.supplier_price && (() => {
+              const storePrice = parseFloat(product.price) || 0;
+              const supplierPrice = parseFloat(product.supplier_price) || 0;
+              const iccMarginPct = parseFloat(product.icc_margin_percent) || 0;
+              const totalMargin = storePrice - supplierPrice;
+              const iccMarginAmount = (totalMargin * iccMarginPct) / 100;
+              const customerMarginAmount = totalMargin - iccMarginAmount;
+              const customerMarginPct = storePrice > 0 ? (customerMarginAmount / storePrice) * 100 : 0;
+
+              return (
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-6">
+                  <h3 className="text-lg font-semibold text-slate-900 mb-4 flex items-center justify-between">
+                    <span>Margin Breakdown</span>
+                    <svg className="h-5 w-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    </svg>
+                  </h3>
+
+                  <div className="space-y-3">
                     <div className="flex justify-between items-center">
-                      <span className="text-sm font-semibold text-slate-900">Your Cost (Supplier Price)</span>
+                      <span className="text-sm text-slate-600">Store Price (Customer Pays)</span>
                       <div className="flex items-center gap-2">
-                        <span className="font-bold text-lg text-slate-900">
-                          ${product.supplier_price ? parseFloat(product.supplier_price).toFixed(2) : '0.00'}
+                        <span className="font-semibold text-slate-900">
+                          ${storePrice.toFixed(2)}
                         </span>
-                        <svg className="h-5 w-5 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <svg className="h-4 w-4 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                         </svg>
                       </div>
                     </div>
-                  </div>
-                  
-                  {product.margin_approved_at && (
-                    <div className="pt-3 text-xs text-slate-500 flex items-center justify-between">
-                      <span>Last updated: {new Date(product.margin_approved_at).toLocaleDateString()}</span>
-                      <svg className="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                      </svg>
+
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="text-slate-600">ICC Margin ({iccMarginPct.toFixed(1)}% of margin)</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-blue-600">
+                          -${iccMarginAmount.toFixed(2)}
+                        </span>
+                        <svg className="h-4 w-4 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                        </svg>
+                      </div>
                     </div>
-                  )}
+
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="text-slate-600">Customer Savings ({customerMarginPct.toFixed(1)}% of price)</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-emerald-600">
+                          -${customerMarginAmount.toFixed(2)}
+                        </span>
+                        <svg className="h-4 w-4 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                        </svg>
+                      </div>
+                    </div>
+
+                    <div className="pt-3 border-t border-slate-300">
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm font-semibold text-slate-900">Your Cost (Supplier Price)</span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-lg text-slate-900">
+                            ${supplierPrice.toFixed(2)}
+                          </span>
+                          <svg className="h-5 w-5 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                          </svg>
+                        </div>
+                      </div>
+                    </div>
+
+                    {product.margin_approved_at && (
+                      <div className="pt-3 text-xs text-slate-500 flex items-center justify-between">
+                        <span>Last updated: {new Date(product.margin_approved_at).toLocaleDateString()}</span>
+                        <svg className="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                        </svg>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="mt-4 rounded-md bg-blue-50 border border-blue-200 p-3">
+                    <p className="text-xs text-blue-800">
+                      <strong>Note:</strong> This margin breakdown is set by ICC administrators and cannot be modified. The distribution of margin between ICC and customer savings may be adjusted by admins to maintain competitive pricing.
+                    </p>
+                  </div>
                 </div>
-                
-                <div className="mt-4 rounded-md bg-blue-50 border border-blue-200 p-3">
-                  <p className="text-xs text-blue-800">
-                    <strong>Note:</strong> This margin breakdown is set by ICC administrators and cannot be modified. The distribution of margin between ICC and customer savings may be adjusted by admins to maintain competitive pricing.
-                  </p>
-                </div>
-              </div>
-            )}
+              );
+            })()}
 
             {/* Product Image - Display Admin Approved Label Only */}
             {(product?.admin_label_url || product?.label_url) && (

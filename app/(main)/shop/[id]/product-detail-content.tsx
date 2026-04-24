@@ -12,6 +12,7 @@ import { useCartStore } from '@/lib/cart-store';
 import { useCompareStore } from '@/lib/compare-store';
 import { isProductEligibleForState } from '@/lib/state-eligibility';
 import { useAuth } from '@/components/auth-provider';
+import { CompetitorPricingPanel } from '@/components/competitor-pricing-panel';
 import type { ProductDetailView, SimilarProduct } from '@/lib/products';
 import { formatPrice, formatAvailabilityDate } from '@/lib/utils';
 import { getImageProxyUrl } from '@/lib/image-proxy';
@@ -417,6 +418,8 @@ export function ProductDetailContent({
                       <div>Compared to: <span className="font-medium text-foreground">{product.comparedTo}</span></div>
                     )}
                   </div>
+
+                  <CompetitorPricingPanel productId={product.id} />
                 </CardContent>
               </Card>
             </div>

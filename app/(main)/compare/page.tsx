@@ -10,7 +10,8 @@ import { PriceWithUnit } from '@/components/ui/price-with-unit';
 import { useCartStore } from '@/lib/cart-store';
 import { formatPrice, formatAvailabilityDate } from '@/lib/utils';
 import { getImageProxyUrl } from '@/lib/image-proxy';
-import { Loader2 } from 'lucide-react';
+import { Loader2, ExternalLink } from 'lucide-react';
+import type { CompetitorPricingResponse } from '@/app/api/products/[id]/competitor-pricing/route';
 
 // Helper function to get document proxy URL (same as image proxy)
 const getDocumentUrl = (url: string | null | undefined): string | null => {
@@ -50,6 +51,62 @@ type Product = {
   bulk_density_lbs_per_gallon: number | null;
 };
 
+function CompetitorCell({
+  row,
+}: {
+  row: CompetitorPricingResponse['competitors'][number] | undefined;
+}) {
+  if (!row) {
+    return <span className="text-sm text-muted-foreground">—</span>;
+  }
+  if (row.fetchStatus !== 'ok' || row.price === null) {
+    return (
+      <div className="space-y-1 text-sm text-muted-foreground">
+        <div>No listing found</div>
+        <div className="text-xs">
+          {row.fetchStatus === 'failed' ? 'Agent errored' : 'Not yet available'}
+        </div>
+      </div>
+    );
+  }
+  const savings = row.savingsVsOurs;
+  return (
+    <div className="space-y-1 text-sm">
+      <div className="font-medium text-foreground">
+        {formatPrice(row.price)}
+        {row.unitOfMeasure && (
+          <span className="text-xs text-muted-foreground">/{row.unitOfMeasure}</span>
+        )}
+      </div>
+      <div className="text-xs text-muted-foreground">
+        {row.productName}
+        {row.containerSize ? ` · ${row.containerSize}` : ''}
+      </div>
+      {savings !== null && (
+        <div className="text-xs">
+          {savings > 0 ? (
+            <span className="text-emerald-700">We save {formatPrice(savings)}</span>
+          ) : savings < 0 ? (
+            <span className="text-amber-700">Them {formatPrice(Math.abs(savings))} cheaper</span>
+          ) : (
+            <span className="text-muted-foreground">Even</span>
+          )}
+        </div>
+      )}
+      {row.sourceUrl && (
+        <a
+          href={row.sourceUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+        >
+          View listing <ExternalLink className="h-3 w-3" />
+        </a>
+      )}
+    </div>
+  );
+}
+
 // Star Rating Component
 function StarRating({ rating, reviewCount }: { rating: number; reviewCount: number }) {
   return (
@@ -82,6 +139,10 @@ export default function ComparePage() {
   const [mounted, setMounted] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  const [competitorPricing, setCompetitorPricing] = useState<
+    Record<string, CompetitorPricingResponse>
+  >({});
+  const [showCompetitors, setShowCompetitors] = useState(true);
 
   useEffect(() => {
     startTransition(() => {
@@ -102,7 +163,6 @@ export default function ComparePage() {
 
       setLoading(true);
       try {
-        // Fetch each product's details
         const productPromises = compareProducts.map(async (cp) => {
           const response = await fetch(`/api/products/${cp.id}`);
           if (response.ok) {
@@ -111,8 +171,26 @@ export default function ComparePage() {
           return null;
         });
 
-        const fetchedProducts = await Promise.all(productPromises);
+        const competitorPromises = compareProducts.map(async (cp) => {
+          const response = await fetch(`/api/products/${cp.id}/competitor-pricing`);
+          if (!response.ok) return null;
+          const json = (await response.json()) as CompetitorPricingResponse;
+          return { id: cp.id, json };
+        });
+
+        const [fetchedProducts, fetchedCompetitors] = await Promise.all([
+          Promise.all(productPromises),
+          Promise.all(competitorPromises),
+        ]);
+
         setProducts(fetchedProducts.filter((p): p is Product => p !== null));
+        setCompetitorPricing(
+          Object.fromEntries(
+            fetchedCompetitors
+              .filter((r): r is { id: string; json: CompetitorPricingResponse } => r !== null)
+              .map((r) => [r.id, r.json])
+          )
+        );
       } catch (error) {
         console.error('Error fetching products:', error);
       } finally {
@@ -572,6 +650,67 @@ export default function ComparePage() {
                         ))}
                       </tr>
                     ))}
+                  </>
+                )}
+
+                {/* Competitor Pricing Section */}
+                {products.some((p) => {
+                  const cp = competitorPricing[p.id];
+                  return cp && cp.matchedIngredient !== null;
+                }) && (
+                  <>
+                    <tr className="bg-muted/40">
+                      <td colSpan={products.length + 1} className="p-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h2 className="text-xl font-semibold">Competitor Pricing</h2>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              Matched by active ingredient. Prices refreshed nightly.
+                            </p>
+                          </div>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setShowCompetitors((s) => !s)}
+                            aria-expanded={showCompetitors}
+                          >
+                            {showCompetitors ? 'Hide' : 'Show'}
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+
+                    {showCompetitors && (
+                      <>
+                        {['fbn', 'forestry-distributing', 'chemical-warehouse'].map((slug) => {
+                          const label =
+                            slug === 'fbn'
+                              ? 'FBN'
+                              : slug === 'forestry-distributing'
+                              ? 'Forestry Distributing'
+                              : 'Chemical Warehouse';
+                          return (
+                            <tr key={slug} className="border-b border-border">
+                              <td className="p-4 font-semibold bg-muted/20 sticky left-0 z-10">
+                                {label}
+                              </td>
+                              {products.map((product) => {
+                                const pricing = competitorPricing[product.id];
+                                const row = pricing?.competitors.find(
+                                  (c) => c.competitorSlug === slug
+                                );
+                                return (
+                                  <td key={product.id} className="p-4 align-top">
+                                    <CompetitorCell row={row} />
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          );
+                        })}
+                      </>
+                    )}
                   </>
                 )}
 

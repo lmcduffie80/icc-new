@@ -10,9 +10,13 @@ export default defineConfig({
     setupFiles: ['./__tests__/setup.ts'],
     testTimeout: 10000, // 10 second timeout per test
     hookTimeout: 10000, // 10 second timeout for before/after hooks
+    // Explicit include prevents vitest from scanning the whole project tree, which
+    // causes it to hang on the macOS Icon file and .next/node_modules in __tests__/.
+    include: ['__tests__/**/*.{test,spec}.{ts,tsx}'],
     exclude: [
       'node_modules/**',
-      'e2e/**',  // Exclude Playwright e2e tests
+      '.next/**',
+      'e2e/**',
     ],
     coverage: {
       provider: 'v8',

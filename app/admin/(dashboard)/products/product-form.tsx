@@ -336,12 +336,17 @@ export function ProductForm({ product }: ProductFormProps) {
     next_available_date: product?.next_available_date 
       ? (() => {
           const date = product.next_available_date;
+          // pg-types parses DATE columns as JS Date objects at runtime even though
+          // the interface types the field as string | null. Cast through unknown to
+          // call toISOString() safely and get a stable YYYY-MM-DD string.
+          if ((date as unknown) instanceof Date) {
+            return (date as unknown as Date).toISOString().split('T')[0];
+          }
           if (typeof date === 'string') {
             // Handle ISO string (YYYY-MM-DDTHH:mm:ss.sssZ) or date string (YYYY-MM-DD)
             return date.split('T')[0];
           }
-          // If it's already a date-like format, return as-is
-          return String(date);
+          return '';
         })()
       : '',
     restricted_use: product?.restricted_use ?? false,
@@ -1066,6 +1071,12 @@ export function ProductForm({ product }: ProductFormProps) {
         {marginError && (
           <div className="mb-6 rounded-lg bg-yellow-50 border border-yellow-200 p-4 text-sm text-yellow-800">
             {marginError}
+          </div>
+        )}
+
+        {product?.margin_approval_status === 'approved' && (
+          <div className="mb-6 rounded-lg bg-amber-50 border border-amber-200 p-4 text-sm text-amber-800">
+            <strong>Approved margin:</strong> This product has an approved margin. Changing the price will reset margin approval to pending and require re-approval before the new margin takes effect.
           </div>
         )}
 
