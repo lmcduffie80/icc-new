@@ -1,0 +1,92 @@
+---
+description: Enforce test mock hygiene — required reading when adding, changing, or removing any external dependency (database, Redis, Stripe, S3, email, auth, AI, etc.)
+globs:
+  - "lib/**/*.ts"
+  - "__tests__/setup.ts"
+  - "package.json"
+alwaysApply: false
+---
+
+# Test Mock Hygiene
+
+## The Core Rule
+
+Any module that **creates a connection or initializes a client at import time** MUST have a corresponding mock in `__tests__/setup.ts`.
+
+If it is not mocked, Vitest workers will attempt a real network/IO operation during module loading — before any test runs — and will silently hang until SIGTERM (327 seconds by default). This is the #1 cause of `Tests 0 passed (N)` with a multi-minute duration.
+
+## Modules That Must Always Be Mocked
+
+The following modules are already mocked in `__tests__/setup.ts`. Do not remove their mocks:
+
+| Module | Why it must be mocked |
+|---|---|
+| `pg` | `lib/auth.ts` calls `new Pool()` at import time |
+| `@neondatabase/serverless` | `lib/db.ts` calls `neon()` and `new Pool()` at import time |
+| `@/lib/db` | Prevents any direct DB calls leaking through |
+| `@upstash/redis` | `lib/rate-limit.ts` creates a Redis client at import time |
+| `@upstash/ratelimit` | Same initialization chain as Redis |
+| `stripe` | `lib/stripe.ts` instantiates a Stripe client at import time |
+| `resend` | `lib/email.ts` creates a Resend client at import time |
+| `@aws-sdk/*` | `lib/s3.ts` creates S3 clients at import time |
+| `next/font/google` | Font loading can hang in test workers |
+| `@vercel/analytics/next` | Network call at import |
+| `@vercel/speed-insights/next` | Network call at import |
+| `next/headers` | Server-only API, throws in test environments |
+| `next/navigation` | Router API unavailable in test environments |
+| `@/lib/admin-auth` | Partial mock to prevent real DB access |
+
+## Adding a New External Dependency
+
+When you add a new package that:
+- Connects to a database, cache, queue, or external API
+- Initializes a client in the module body (outside a function)
+- Makes network requests at import time
+
+**You MUST:**
+
+1. Add a `vi.mock(...)` block to `__tests__/setup.ts` before the dependency is used in any test
+2. Verify the mock returns the same shape as the real module (check exported names)
+3. Run `pnpm test` to confirm no hang
+
+**Template:**
+```typescript
+// In __tests__/setup.ts
+vi.mock('your-new-package', () => {
+  return {
+    YourClass: class MockYourClass {
+      constructor() {}
+      someMethod = vi.fn().mockResolvedValue({ /* shape of real response */ });
+    },
+    yourFunction: vi.fn().mockResolvedValue(null),
+  };
+});
+```
+
+## Detecting the Problem Early
+
+Signs that a module is missing a mock:
+
+- `pnpm test` shows `Tests 0 passed (N)` with duration > 30 seconds
+- Workers never start printing individual test results
+- Exit code 143 (SIGTERM) after a long wait
+
+When you see this, check for any recent `pnpm add` or new `import` statements in `lib/` that touch external services.
+
+## iCloud / macOS File Artifacts
+
+`vitest.config.ts` already excludes these patterns — keep them:
+- `**/* [0-9]*.test.{ts,tsx}` — iCloud numbered duplicates (e.g. `auth 4.test.ts`)
+- `**/Icon` and `**/Icon\r` — macOS Finder metadata files
+
+If vitest suddenly counts more test files than exist, run:
+```bash
+python3 -c "
+import os
+for dirpath, _, files in os.walk('__tests__'):
+    for f in files:
+        if ' ' in f or f.startswith('Icon'):
+            print(repr(os.path.join(dirpath, f)))
+"
+```
+and delete any artifacts found.

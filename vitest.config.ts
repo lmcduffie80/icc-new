@@ -7,6 +7,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'happy-dom', // Use happy-dom instead of jsdom (faster, more stable)
+    globalSetup: ['./__tests__/global-setup.ts'],
     setupFiles: ['./__tests__/setup.ts'],
     testTimeout: 10000, // 10 second timeout per test
     hookTimeout: 10000, // 10 second timeout for before/after hooks

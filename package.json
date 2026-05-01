@@ -5,6 +5,7 @@
   "packageManager": "pnpm@9.0.0",
   "scripts": {
     "postinstall": "node scripts/postinstall.js",
+    "prepare": "bash scripts/install-hooks.sh",
     "dev": "next dev --port 3000 --hostname localhost",
     "build": "next build",
     "start": "next start",

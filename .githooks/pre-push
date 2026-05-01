@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# Pre-push hook: run the full test suite before allowing a push.
+# If tests hang (exit code 143 = SIGTERM) or fail, the push is blocked.
+#
+# To bypass in an emergency: git push --no-verify
+# To install on a fresh clone: bash scripts/install-hooks.sh
+
+set -euo pipefail
+
+echo "🧪 Running tests before push..."
+
+# macOS does not ship GNU timeout. Use Perl's alarm as a portable substitute.
+# 90 seconds is well above the normal ~5s run; anything longer means a hang.
+MAX_SECONDS=90
+
+run_with_timeout() {
+  perl -e "
+    alarm $MAX_SECONDS;
+    \$SIG{ALRM} = sub { print STDERR \"\n❌ Tests timed out after ${MAX_SECONDS}s — likely a missing mock in __tests__/setup.ts\n\"; exit 143; };
+    exec @ARGV or die \"exec failed: \$!\";
+  " -- "$@"
+}
+
+if run_with_timeout pnpm test; then
+  echo "✅ All tests passed."
+  exit 0
+else
+  EXIT=$?
+  if [ $EXIT -eq 143 ]; then
+    echo ""
+    echo "❌ Tests timed out (${MAX_SECONDS}s). The most common cause:"
+    echo "   A new external dependency in lib/ is not mocked in __tests__/setup.ts."
+    echo "   See .cursor/rules/test-mock-hygiene.mdc for the fix."
+  else
+    echo ""
+    echo "❌ Tests failed (exit $EXIT). Fix before pushing."
+  fi
+  exit 1
+fi
