@@ -26,8 +26,9 @@ export async function GET(
       subscription_status: string;
       trial_ends_at: string | null;
       is_active: boolean;
+      mfa_required: boolean;
     }>(
-      `SELECT id, slug, name, currency, country, subscription_status, trial_ends_at, is_active
+      `SELECT id, slug, name, currency, country, subscription_status, trial_ends_at, is_active, mfa_required
        FROM tenants
        WHERE slug = $1 AND is_active = true
        LIMIT 1`,

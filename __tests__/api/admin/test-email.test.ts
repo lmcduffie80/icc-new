@@ -239,6 +239,7 @@ describe('POST /api/admin/test-email', () => {
         role_name: 'admin',
         token: 'test-token',
         expires_at: new Date(Date.now() + 3600000).toISOString(),
+        permissions: [],
       },
     });
 

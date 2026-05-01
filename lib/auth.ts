@@ -1,7 +1,8 @@
 import { betterAuth } from 'better-auth';
 import { Pool } from 'pg';
 import { passkey } from '@better-auth/passkey';
-import { sendVerificationEmail, sendPasswordResetEmail } from './email';
+import { twoFactor } from 'better-auth/plugins';
+import { sendVerificationEmail, sendPasswordResetEmail, sendMfaOtpEmail } from './email';
 
 // Normalize an origin string: trim whitespace, strip trailing slashes,
 // and discard anything that doesn't parse as an absolute URL with a host.
@@ -136,8 +137,27 @@ export const auth = betterAuth({
     },
   },
   trustedOrigins,
+  appName: 'Agrovus',
   plugins: [
     passkey(),
+    twoFactor({
+      issuer: 'Agrovus',
+      otpOptions: {
+        async sendOTP({ user, otp }) {
+          await sendMfaOtpEmail({
+            to: user.email,
+            name: user.name ?? '',
+            otp,
+          });
+        },
+        period: 5,
+        digits: 6,
+      },
+      backupCodeOptions: {
+        amount: 10,
+        length: 10,
+      },
+    }),
   ],
 });
 

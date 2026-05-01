@@ -26,6 +26,7 @@ export interface Tenant {
   trialEndsAt: string | null;
   billingCycle: string | null;
   isActive: boolean;
+  mfaRequired: boolean;
   plan: Plan | null;
 }
 
@@ -45,6 +46,7 @@ interface DbTenant {
   trial_ends_at: string | null;
   billing_cycle: string | null;
   is_active: boolean;
+  mfa_required: boolean;
   plan_name: string | null;
   plan_display_name: string | null;
   plan_price_monthly_usd: string | null;
@@ -58,7 +60,7 @@ const TENANT_SELECT = `
     t.country, t.currency, t.plan_id, t.billing_type,
     t.stripe_customer_id, t.stripe_subscription_id,
     t.subscription_status, t.trial_ends_at, t.billing_cycle,
-    t.is_active,
+    t.is_active, t.mfa_required,
     p.name          AS plan_name,
     p.display_name  AS plan_display_name,
     p.price_monthly_usd AS plan_price_monthly_usd,
@@ -85,6 +87,7 @@ function mapTenant(row: DbTenant): Tenant {
     trialEndsAt: row.trial_ends_at,
     billingCycle: row.billing_cycle,
     isActive: row.is_active,
+    mfaRequired: row.mfa_required ?? false,
     plan: row.plan_name
       ? {
           id: row.plan_id!,

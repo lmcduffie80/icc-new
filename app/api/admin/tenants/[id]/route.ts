@@ -12,6 +12,7 @@ const updateTenantSchema = z.object({
   logoUrl: z.string().url().optional().nullable(),
   planId: z.string().optional().nullable(),
   isActive: z.boolean().optional(),
+  mfaRequired: z.boolean().optional(),
 });
 
 export async function PUT(
@@ -31,7 +32,7 @@ export async function PUT(
   const existing = await queryOne(`SELECT id FROM tenants WHERE id = $1`, [id]);
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  const { name, country, currency, billingType, primaryColor, logoUrl, planId, isActive } = result.data;
+  const { name, country, currency, billingType, primaryColor, logoUrl, planId, isActive, mfaRequired } = result.data;
 
   try {
     await query(
@@ -44,8 +45,9 @@ export async function PUT(
          logo_url      = CASE WHEN $6::text IS DISTINCT FROM 'SKIP' THEN $6::text ELSE logo_url END,
          plan_id       = CASE WHEN $7::text IS DISTINCT FROM 'SKIP' THEN $7::text ELSE plan_id END,
          is_active     = COALESCE($8, is_active),
+         mfa_required  = COALESCE($9, mfa_required),
          updated_at    = NOW()
-       WHERE id = $9`,
+       WHERE id = $10`,
       [
         name ?? null,
         country ?? null,
@@ -55,6 +57,7 @@ export async function PUT(
         'logoUrl' in result.data ? (logoUrl ?? null) : 'SKIP',
         'planId' in result.data ? (planId ?? null) : 'SKIP',
         isActive ?? null,
+        mfaRequired ?? null,
         id,
       ]
     );

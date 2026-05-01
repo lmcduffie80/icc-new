@@ -12,6 +12,7 @@ export interface MockUser {
   updatedAt: Date;
   emailVerified: boolean;
   image?: string | null;
+  twoFactorEnabled: boolean | null;
 }
 
 export interface MockAdminUser {
@@ -61,6 +62,7 @@ export function createMockSession(overrides?: Partial<MockUser>): MockSession {
       updatedAt: now,
       emailVerified: true,
       image: null,
+      twoFactorEnabled: false,
       ...overrides,
     },
     session: {

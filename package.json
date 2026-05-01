@@ -61,6 +61,7 @@
     "prop-types": "^15.8.1",
     "react": "19.2.1",
     "react-dom": "19.2.1",
+    "react-qr-code": "^2.0.21",
     "react-transition-group": "^4.4.5",
     "recharts": "^2.15.4",
     "resend": "^6.9.1",

@@ -82,6 +82,7 @@ export async function middleware(request: NextRequest) {
   requestHeaders.set('x-tenant-country', tenant.country ?? 'US');
   requestHeaders.set('x-tenant-subscription', tenant.subscription_status ?? 'active');
   requestHeaders.set('x-past-due', tenant.subscription_status === 'past_due' ? '1' : '0');
+  requestHeaders.set('x-mfa-required', tenant.mfa_required ? '1' : '0');
 
   return NextResponse.next({ request: { headers: requestHeaders } });
 }

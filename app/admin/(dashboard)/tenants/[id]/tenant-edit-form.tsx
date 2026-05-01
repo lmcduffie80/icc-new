@@ -34,6 +34,7 @@ export default function TenantEditForm({
       primaryColor: form.get('primaryColor'),
       logoUrl: form.get('logoUrl') || null,
       isActive: form.get('isActive') === 'true',
+      mfaRequired: form.get('mfaRequired') === 'true',
     };
 
     try {
@@ -166,17 +167,36 @@ export default function TenantEditForm({
         </div>
       </div>
 
-      <div>
-        <label className="mb-1.5 block text-sm font-medium text-slate-700">Active</label>
-        <select
-          name="isActive"
-          defaultValue={String(tenant.isActive)}
-          disabled={!canEdit}
-          className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:opacity-60"
-        >
-          <option value="true">Active</option>
-          <option value="false">Inactive</option>
-        </select>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label className="mb-1.5 block text-sm font-medium text-slate-700">Active</label>
+          <select
+            name="isActive"
+            defaultValue={String(tenant.isActive)}
+            disabled={!canEdit}
+            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:opacity-60"
+          >
+            <option value="true">Active</option>
+            <option value="false">Inactive</option>
+          </select>
+        </div>
+        <div>
+          <label className="mb-1.5 block text-sm font-medium text-slate-700">
+            Require MFA
+            <span className="ml-2 text-xs font-normal text-slate-500">
+              Forces all users to enroll in 2FA
+            </span>
+          </label>
+          <select
+            name="mfaRequired"
+            defaultValue={String((tenant as { mfaRequired?: boolean }).mfaRequired ?? false)}
+            disabled={!canEdit}
+            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:opacity-60"
+          >
+            <option value="false">Not required</option>
+            <option value="true">Required</option>
+          </select>
+        </div>
       </div>
 
       {canEdit && (

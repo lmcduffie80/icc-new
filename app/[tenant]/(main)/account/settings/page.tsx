@@ -17,15 +17,24 @@ import {
   Fingerprint,
   Plus,
   Key,
+  ShieldCheck,
+  ShieldOff,
 } from 'lucide-react';
-import { passkey, deleteUser, signOut } from '@/lib/auth-client';
+import { passkey, deleteUser, signOut, twoFactor, useSession } from '@/lib/auth-client';
 
 export default function SettingsPage() {
   const router = useRouter();
   const { user, isPending } = useAuth();
+  const { data: session } = useSession();
 
   // Theme preference
   const [theme, setTheme] = useState<'light' | 'dark' | 'system'>('system');
+
+  // 2FA state
+  const [showDisable2fa, setShowDisable2fa] = useState(false);
+  const [disable2faPassword, setDisable2faPassword] = useState('');
+  const [disable2faError, setDisable2faError] = useState('');
+  const [isDisabling2fa, setIsDisabling2fa] = useState(false);
 
   // Passkey state
   const [passkeys, setPasskeys] = useState<Array<{
@@ -138,6 +147,25 @@ export default function SettingsPage() {
     }
   };
 
+  const handleDisable2fa = async () => {
+    setIsDisabling2fa(true);
+    setDisable2faError('');
+    try {
+      const result = await twoFactor.disable({ password: disable2faPassword });
+      if (result.error) {
+        setDisable2faError(result.error.message || 'Failed to disable 2FA.');
+      } else {
+        setShowDisable2fa(false);
+        setDisable2faPassword('');
+        router.refresh();
+      }
+    } catch {
+      setDisable2faError('An unexpected error occurred.');
+    } finally {
+      setIsDisabling2fa(false);
+    }
+  };
+
   const handleDeleteAccount = async () => {
     setIsDeleting(true);
     setDeleteError('');
@@ -233,6 +261,92 @@ export default function SettingsPage() {
                   Change Password
                 </Button>
               </div>
+            </div>
+
+            {/* Two-Factor Authentication */}
+            <div className="pb-6 mb-6 border-b border-border">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <ShieldCheck className="h-5 w-5 text-muted-foreground" />
+                  <div>
+                    <div className="font-medium flex items-center gap-2">
+                      Two-factor authentication
+                      {session?.user?.twoFactorEnabled ? (
+                        <span className="text-xs font-medium text-green-700 bg-green-100 rounded-full px-2 py-0.5">
+                          Enabled
+                        </span>
+                      ) : (
+                        <span className="text-xs font-medium text-muted-foreground bg-muted rounded-full px-2 py-0.5">
+                          Off
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      {session?.user?.twoFactorEnabled
+                        ? 'Your account is protected with an authenticator app.'
+                        : 'Add an extra layer of security to your account.'}
+                    </div>
+                  </div>
+                </div>
+                {session?.user?.twoFactorEnabled ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-destructive border-destructive/40 hover:bg-destructive/5"
+                    onClick={() => setShowDisable2fa(true)}
+                  >
+                    <ShieldOff className="h-4 w-4 mr-1.5" />
+                    Disable
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => router.push(`auth/two-factor/setup`)}
+                  >
+                    <ShieldCheck className="h-4 w-4 mr-1.5" />
+                    Enable
+                  </Button>
+                )}
+              </div>
+
+              {/* Disable 2FA confirmation panel */}
+              {showDisable2fa && (
+                <div className="mt-4 p-4 rounded-lg border border-destructive/30 bg-destructive/5 space-y-3">
+                  <p className="text-sm text-muted-foreground">
+                    Enter your password to disable two-factor authentication.
+                  </p>
+                  <input
+                    type="password"
+                    value={disable2faPassword}
+                    onChange={(e) => setDisable2faPassword(e.target.value)}
+                    placeholder="Your password"
+                    autoComplete="current-password"
+                    className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-destructive/50"
+                  />
+                  {disable2faError && (
+                    <p className="text-sm text-destructive">{disable2faError}</p>
+                  )}
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => { setShowDisable2fa(false); setDisable2faPassword(''); setDisable2faError(''); }}
+                      disabled={isDisabling2fa}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                      onClick={handleDisable2fa}
+                      disabled={isDisabling2fa || !disable2faPassword}
+                    >
+                      {isDisabling2fa ? 'Disabling…' : 'Disable 2FA'}
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Passkeys */}

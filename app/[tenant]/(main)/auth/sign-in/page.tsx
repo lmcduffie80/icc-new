@@ -2,15 +2,16 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams, useParams } from 'next/navigation';
 import { signIn } from '@/lib/auth-client';
 import { Button } from '@/components/ui/button';
 import { Fingerprint } from 'lucide-react';
 
 function SignInForm() {
   const router = useRouter();
+  const params = useParams<{ tenant: string }>();
   const searchParams = useSearchParams();
-  const callbackUrl = searchParams.get('callbackUrl') || '/account';
+  const callbackUrl = searchParams.get('callbackUrl') || `/${params.tenant}/account`;
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -30,20 +31,31 @@ function SignInForm() {
     setError('');
 
     try {
-      const result = await signIn.email({
-        email,
-        password,
-      });
+      const result = await signIn.email(
+        { email, password },
+        {
+          onSuccess(ctx) {
+            const data = ctx.data as { twoFactorRedirect?: boolean };
+            if (data?.twoFactorRedirect) {
+              // Server will redirect via the twoFactorPage config in auth-client;
+              // as a safety net we also push here with the callbackUrl preserved.
+              router.push(
+                `/${params.tenant}/auth/two-factor?callbackUrl=${encodeURIComponent(callbackUrl)}`
+              );
+              return;
+            }
+            router.push(callbackUrl);
+            router.refresh();
+          },
+        }
+      );
 
-      if (result.error) {
+      if (result?.error) {
         setError(result.error.message || 'Failed to sign in');
-      } else {
-        router.push(callbackUrl);
-        router.refresh();
+        setIsLoading(false);
       }
     } catch {
       setError('An unexpected error occurred');
-    } finally {
       setIsLoading(false);
     }
   };

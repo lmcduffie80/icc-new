@@ -2739,3 +2739,38 @@ You are receiving this email because you have Signature Authority for supplier c
     return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
   }
 }
+
+// ---------------------------------------------------------------------------
+// MFA OTP email
+// ---------------------------------------------------------------------------
+
+export async function sendMfaOtpEmail(data: {
+  to: string;
+  name: string;
+  otp: string;
+}): Promise<{ success: boolean; error?: string; messageId?: string }> {
+  try {
+    const resend = getResendClient();
+    const result = await resend.emails.send({
+      from: FROM_EMAIL,
+      to: data.to,
+      subject: 'Your sign-in verification code',
+      html: `
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 480px; margin: 0 auto; padding: 32px 24px; background: #ffffff;">
+          <h2 style="font-size: 20px; font-weight: 600; color: #111; margin: 0 0 8px;">Verification code</h2>
+          <p style="color: #555; font-size: 15px; margin: 0 0 24px;">Hi ${data.name || 'there'}, use the code below to complete your sign-in.</p>
+          <div style="background: #f4f4f5; border-radius: 10px; padding: 20px 24px; text-align: center; margin-bottom: 24px;">
+            <span style="font-size: 32px; font-weight: 700; letter-spacing: 8px; color: #111; font-family: monospace;">${data.otp}</span>
+          </div>
+          <p style="color: #888; font-size: 13px; margin: 0;">This code expires in 5 minutes. If you didn&rsquo;t request this, you can safely ignore this email.</p>
+        </div>
+      `,
+      text: `Your sign-in verification code is: ${data.otp}\n\nThis code expires in 5 minutes.\n\nIf you didn't request this, ignore this email.`,
+    });
+
+    return { success: true, messageId: result.data?.id };
+  } catch (error) {
+    console.error('[EMAIL] Failed to send MFA OTP:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+  }
+}
