@@ -108,7 +108,7 @@ export function Footer() {
         {/* Bottom */}
         <div className="flex flex-col items-center justify-between gap-4 border-t border-border/40 py-6 md:flex-row">
           <p className="text-xs text-muted-foreground">
-            &copy; {new Date().getFullYear()} Innovative Crop Care
+            &copy; {new Date().getFullYear()} Innovative CropCare, LLC
           </p>
           <div className="flex items-center space-x-4">
             <Link
