@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { ContractViewer } from '@/components/contract-viewer';
+import { calculateCostPerGallon } from '@/lib/utils';
 
 const DEFAULT_TERMS = `SUPPLY AGREEMENT
 
@@ -66,6 +67,7 @@ interface SupplierProduct {
   price: string;
   original_price: string | null;
   unit_of_measure: string | null;
+  attributes: { containerSizes?: string } | null;
   margin_split_percentage: string | null;
   icc_margin_percent: string | null;
 }
@@ -81,6 +83,7 @@ interface ContractProduct {
   icc_margin_amount: string;
   supplier_margin_amount: string;
   unit_of_measure: string | null;
+  container_size: string | null;
 }
 
 interface ParentContract {
@@ -213,7 +216,12 @@ export default function ContractBuilderPage() {
           setExpiryDate(c.content.expiry_date || '');
           setTerms(c.content.terms || DEFAULT_TERMS);
           setCustomClauses(c.content.custom_clauses || []);
-          setProducts(c.content.products || []);
+          // Normalize products from older contract versions that may lack container_size
+          const loadedProducts: ContractProduct[] = (c.content.products || []).map((p: ContractProduct) => ({
+            ...p,
+            container_size: p.container_size ?? null,
+          }));
+          setProducts(loadedProducts);
         }
       } catch (error) {
         console.error('Failed to load parent contract:', error);
@@ -250,6 +258,7 @@ export default function ContractBuilderPage() {
         icc_margin_amount: iccAmount.toFixed(2),
         supplier_margin_amount: supplierAmount.toFixed(2),
         unit_of_measure: p.unit_of_measure,
+        container_size: p.attributes?.containerSizes || null,
       };
     });
   }, []);
@@ -293,6 +302,7 @@ export default function ContractBuilderPage() {
       icc_margin_amount: '0.00',
       supplier_margin_amount: '0.00',
       unit_of_measure: null,
+      container_size: null,
     };
     setProducts([...products, newProduct]);
   };
@@ -309,6 +319,7 @@ export default function ContractBuilderPage() {
       if (field === 'name') product.name = value;
       else if (field === 'sku') product.sku = value || null;
       else if (field === 'unit_of_measure') product.unit_of_measure = value || null;
+      else if (field === 'container_size') product.container_size = value || null;
       else if (field === 'supplier_price') product.supplier_price = value;
       else if (field === 'store_price') product.store_price = value;
       else if (field === 'margin_split_icc_percent') product.margin_split_icc_percent = value;
@@ -738,8 +749,32 @@ export default function ContractBuilderPage() {
                           <>
                             <td className="px-3 py-2 font-medium">{product.name}</td>
                             <td className="px-3 py-2 text-gray-600">{product.sku || '-'}</td>
-                            <td className="px-3 py-2 text-right">${product.supplier_price}</td>
-                            <td className="px-3 py-2 text-right">${product.store_price}</td>
+                            <td className="px-3 py-2 text-right">
+                              {(() => {
+                                const perGal = calculateCostPerGallon(product.supplier_price, product.unit_of_measure, product.container_size);
+                                return perGal ? (
+                                  <>
+                                    <div>{perGal}</div>
+                                    <div className="text-xs text-gray-500">${product.supplier_price}</div>
+                                  </>
+                                ) : (
+                                  <>${product.supplier_price}</>
+                                );
+                              })()}
+                            </td>
+                            <td className="px-3 py-2 text-right">
+                              {(() => {
+                                const perGal = calculateCostPerGallon(product.store_price, product.unit_of_measure, product.container_size);
+                                return perGal ? (
+                                  <>
+                                    <div>{perGal}</div>
+                                    <div className="text-xs text-gray-500">${product.store_price}</div>
+                                  </>
+                                ) : (
+                                  <>${product.store_price}</>
+                                );
+                              })()}
+                            </td>
                             <td className="px-3 py-2 text-right">
                               {product.margin_split_icc_percent === ''
                                 ? <span className="text-amber-600 font-medium">Not set</span>
@@ -750,8 +785,32 @@ export default function ContractBuilderPage() {
                                 ? <span className="text-amber-600 font-medium">Not set</span>
                                 : `${product.margin_split_supplier_percent}%`}
                             </td>
-                            <td className="px-3 py-2 text-right text-green-700">${product.icc_margin_amount}</td>
-                            <td className="px-3 py-2 text-right text-green-700">${product.supplier_margin_amount}</td>
+                            <td className="px-3 py-2 text-right text-green-700">
+                              {(() => {
+                                const perGal = calculateCostPerGallon(product.icc_margin_amount, product.unit_of_measure, product.container_size);
+                                return perGal ? (
+                                  <>
+                                    <div>{perGal}</div>
+                                    <div className="text-xs text-green-600/70">${product.icc_margin_amount}</div>
+                                  </>
+                                ) : (
+                                  <>${product.icc_margin_amount}</>
+                                );
+                              })()}
+                            </td>
+                            <td className="px-3 py-2 text-right text-green-700">
+                              {(() => {
+                                const perGal = calculateCostPerGallon(product.supplier_margin_amount, product.unit_of_measure, product.container_size);
+                                return perGal ? (
+                                  <>
+                                    <div>{perGal}</div>
+                                    <div className="text-xs text-green-600/70">${product.supplier_margin_amount}</div>
+                                  </>
+                                ) : (
+                                  <>${product.supplier_margin_amount}</>
+                                );
+                              })()}
+                            </td>
                             <td className="px-3 py-2 text-gray-600">{product.unit_of_measure || '-'}</td>
                           </>
                         )}

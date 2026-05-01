@@ -2346,13 +2346,13 @@ export default function CheckoutPage() {
                           }, 500);
                         }}
                       />
-                    ) : (
+                    ) : !minimumOrderError ? (
                       <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
                         <p className="text-sm text-red-600">
                           {submitError || 'Failed to initialize payment. Please try again.'}
                         </p>
                       </div>
-                    )}
+                    ) : null}
                   </>
                 )}
               </AccordionSection>

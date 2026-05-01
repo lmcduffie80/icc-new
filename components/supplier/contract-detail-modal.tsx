@@ -22,6 +22,7 @@ interface ContractContent {
     icc_margin_amount: string;
     supplier_margin_amount: string;
     unit_of_measure?: string | null;
+    container_size?: string | null;
   }>;
   version_notes?: string | null;
 }

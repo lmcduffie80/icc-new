@@ -573,6 +573,7 @@ export const contractBuilderProductSchema = z.object({
   icc_margin_amount: z.string().regex(/^\d+(\.\d{1,2})?$/, 'Must be a valid amount'),
   supplier_margin_amount: z.string().regex(/^\d+(\.\d{1,2})?$/, 'Must be a valid amount'),
   unit_of_measure: z.string().max(50).optional().nullable(),
+  container_size: z.string().max(50).optional().nullable(),
 });
 
 export const contractBuilderSchema = z.object({

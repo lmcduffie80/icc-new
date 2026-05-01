@@ -108,7 +108,49 @@ vi.mock('@/lib/db', () => {
       strings,
       values,
     })),
+    pool: {},
+    withTransaction: vi.fn().mockResolvedValue(undefined),
+    getPoolInstance: vi.fn(),
+    closePool: vi.fn().mockResolvedValue(undefined),
+    getPoolStats: vi.fn().mockReturnValue({ configured: false }),
+    testConnection: vi.fn().mockResolvedValue({ connected: false }),
   };
+});
+
+// Mock pg (used directly by lib/auth.ts) to prevent real database connections
+vi.mock('pg', () => {
+  class MockPool {
+    constructor() {}
+    connect = vi.fn().mockResolvedValue({
+      query: vi.fn().mockResolvedValue({ rows: [] }),
+      release: vi.fn(),
+    });
+    query = vi.fn().mockResolvedValue({ rows: [] });
+    end = vi.fn().mockResolvedValue(undefined);
+    on = vi.fn().mockReturnThis();
+    totalCount = 0;
+    idleCount = 0;
+    waitingCount = 0;
+  }
+  class MockClient {
+    query = vi.fn().mockResolvedValue({ rows: [] });
+    release = vi.fn();
+  }
+  return { Pool: MockPool, Client: MockClient };
+});
+
+// Mock @neondatabase/serverless to prevent real database connections
+vi.mock('@neondatabase/serverless', () => {
+  const mockNeon = vi.fn().mockReturnValue(
+    vi.fn().mockResolvedValue([])
+  );
+  return { neon: mockNeon, Pool: class MockNeonPool {
+    constructor() {}
+    connect = vi.fn().mockResolvedValue({ query: vi.fn().mockResolvedValue({ rows: [] }), release: vi.fn() });
+    query = vi.fn().mockResolvedValue({ rows: [] });
+    end = vi.fn().mockResolvedValue(undefined);
+    on = vi.fn().mockReturnThis();
+  }};
 });
 
 // Mock Admin Auth (partial mock to preserve actual functions)

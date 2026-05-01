@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { calculateCostPerGallon } from '@/lib/utils';
 
 interface ContractProduct {
   product_id: string;
@@ -13,6 +14,7 @@ interface ContractProduct {
   icc_margin_amount: string;
   supplier_margin_amount: string;
   unit_of_measure?: string | null;
+  container_size?: string | null;
 }
 
 interface ContractContent {
@@ -204,19 +206,61 @@ export function ContractViewer({
               </tr>
             </thead>
             <tbody>
-              {content.products.map((product, i) => (
-                <tr key={product.product_id || i} className="border-b last:border-0">
-                  <td className="px-3 py-2 font-medium text-gray-900">{product.name}</td>
-                  <td className="px-3 py-2 text-gray-600">{product.sku || '-'}</td>
-                  <td className="px-3 py-2 text-right text-gray-900">${product.supplier_price}</td>
-                  <td className="px-3 py-2 text-right text-gray-900">${product.store_price}</td>
-                  <td className="px-3 py-2 text-right text-gray-600">{product.margin_split_icc_percent}%</td>
-                  <td className="px-3 py-2 text-right text-gray-600">{product.margin_split_supplier_percent}%</td>
-                  <td className="px-3 py-2 text-right text-green-700">${product.icc_margin_amount}</td>
-                  <td className="px-3 py-2 text-right text-green-700">${product.supplier_margin_amount}</td>
-                  <td className="px-3 py-2 text-gray-600">{product.unit_of_measure || '-'}</td>
-                </tr>
-              ))}
+              {content.products.map((product, i) => {
+                const supplierPerGal = calculateCostPerGallon(product.supplier_price, product.unit_of_measure, product.container_size);
+                const storePerGal = calculateCostPerGallon(product.store_price, product.unit_of_measure, product.container_size);
+                const iccPerGal = calculateCostPerGallon(product.icc_margin_amount, product.unit_of_measure, product.container_size);
+                const supplierMarginPerGal = calculateCostPerGallon(product.supplier_margin_amount, product.unit_of_measure, product.container_size);
+                return (
+                  <tr key={product.product_id || i} className="border-b last:border-0">
+                    <td className="px-3 py-2 font-medium text-gray-900">{product.name}</td>
+                    <td className="px-3 py-2 text-gray-600">{product.sku || '-'}</td>
+                    <td className="px-3 py-2 text-right text-gray-900">
+                      {supplierPerGal ? (
+                        <>
+                          <div>{supplierPerGal}</div>
+                          <div className="text-xs text-gray-500">${product.supplier_price}</div>
+                        </>
+                      ) : (
+                        <>${product.supplier_price}</>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-right text-gray-900">
+                      {storePerGal ? (
+                        <>
+                          <div>{storePerGal}</div>
+                          <div className="text-xs text-gray-500">${product.store_price}</div>
+                        </>
+                      ) : (
+                        <>${product.store_price}</>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-right text-gray-600">{product.margin_split_icc_percent}%</td>
+                    <td className="px-3 py-2 text-right text-gray-600">{product.margin_split_supplier_percent}%</td>
+                    <td className="px-3 py-2 text-right text-green-700">
+                      {iccPerGal ? (
+                        <>
+                          <div>{iccPerGal}</div>
+                          <div className="text-xs text-green-600/70">${product.icc_margin_amount}</div>
+                        </>
+                      ) : (
+                        <>${product.icc_margin_amount}</>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-right text-green-700">
+                      {supplierMarginPerGal ? (
+                        <>
+                          <div>{supplierMarginPerGal}</div>
+                          <div className="text-xs text-green-600/70">${product.supplier_margin_amount}</div>
+                        </>
+                      ) : (
+                        <>${product.supplier_margin_amount}</>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-gray-600">{product.unit_of_measure || '-'}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

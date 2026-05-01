@@ -17,6 +17,15 @@ export default defineConfig({
       'node_modules/**',
       '.next/**',
       'e2e/**',
+      // iCloud / Finder duplicates (e.g. "tax 2.test.ts", "foo 4.test.ts").
+      // These are git-ignored but vitest's glob still picks them up and they
+      // can hang the worker pool when their imports drift from current code.
+      '**/* [0-9]*.test.{ts,tsx}',
+      '**/* [0-9]*.spec.{ts,tsx}',
+      // macOS Finder icon files (Icon\r) — vite 8.x / rolldown hangs when its
+      // module scanner encounters these carriage-return filenames.
+      '**/Icon',
+      '**/Icon\r',
     ],
     coverage: {
       provider: 'v8',

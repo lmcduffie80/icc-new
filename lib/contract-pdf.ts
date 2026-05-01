@@ -1,4 +1,5 @@
 import { generatePDFWithPDFShift } from '@/lib/pdf-generation';
+import { calculateCostPerGallon } from '@/lib/utils';
 
 interface ContractProduct {
   product_id: string;
@@ -11,6 +12,7 @@ interface ContractProduct {
   icc_margin_amount: string;
   supplier_margin_amount: string;
   unit_of_measure?: string | null;
+  container_size?: string | null;
 }
 
 interface ContractContent {
@@ -89,6 +91,22 @@ function buildSupplierAddressHtml(content: ContractContent): string {
   return lines.join('');
 }
 
+function renderPerGalCell(
+  amount: string,
+  unitOfMeasure: string | null | undefined,
+  containerSize: string | null | undefined,
+  totalColor?: string,
+): string {
+  const perGal = calculateCostPerGallon(amount, unitOfMeasure, containerSize);
+  const totalStyle = totalColor
+    ? `color:${totalColor};font-size:7pt;`
+    : `color:#6b7280;font-size:7pt;`;
+  if (perGal) {
+    return `<div>${escapeHtml(perGal)}</div><div style="${totalStyle}">$${escapeHtml(amount)}</div>`;
+  }
+  return `$${escapeHtml(amount)}`;
+}
+
 function buildProductsTableHtml(products: ContractProduct[]): string {
   if (!products || products.length === 0) return '';
 
@@ -97,11 +115,11 @@ function buildProductsTableHtml(products: ContractProduct[]): string {
       (p) => `
     <tr>
       <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;font-size:8pt;">${escapeHtml(p.name)}${p.sku ? `<br><span style="color:#6b7280;font-size:7pt;">SKU: ${escapeHtml(p.sku)}</span>` : ''}</td>
-      <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;font-size:8pt;text-align:right;">$${escapeHtml(p.supplier_price)}</td>
-      <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;font-size:8pt;text-align:right;">$${escapeHtml(p.store_price)}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;font-size:8pt;text-align:right;">${renderPerGalCell(p.supplier_price, p.unit_of_measure, p.container_size)}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;font-size:8pt;text-align:right;">${renderPerGalCell(p.store_price, p.unit_of_measure, p.container_size)}</td>
       <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;font-size:8pt;text-align:right;">${escapeHtml(p.margin_split_icc_percent)}%</td>
-      <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;font-size:8pt;text-align:right;">$${escapeHtml(p.icc_margin_amount)}</td>
-      <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;font-size:8pt;text-align:right;">$${escapeHtml(p.supplier_margin_amount)}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;font-size:8pt;text-align:right;color:#047857;">${renderPerGalCell(p.icc_margin_amount, p.unit_of_measure, p.container_size, '#059669')}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;font-size:8pt;text-align:right;color:#047857;">${renderPerGalCell(p.supplier_margin_amount, p.unit_of_measure, p.container_size, '#059669')}</td>
     </tr>`,
     )
     .join('');

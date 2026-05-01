@@ -49,6 +49,7 @@ export async function GET(
         p.price,
         p.original_price,
         p.unit_of_measure,
+        p.attributes,
         p.margin_split_percentage,
         p.icc_margin_percent
       FROM products p
