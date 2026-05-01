@@ -30,14 +30,24 @@ export default async function TenantsPage() {
   const session = await getAdminSession();
   if (!session) redirect('/admin/login');
 
-  const tenants = await query<TenantRow>(
-    `SELECT t.id, t.slug, t.name, t.country, t.currency,
-            t.subscription_status, t.billing_type, t.is_active, t.created_at,
-            p.display_name AS plan_display_name, p.name AS plan_name
-     FROM tenants t
-     LEFT JOIN plans p ON p.id = t.plan_id
-     ORDER BY t.created_at DESC`
-  );
+  let tenants: TenantRow[] = [];
+  let dbError: string | null = null;
+
+  try {
+    tenants = await query<TenantRow>(
+      `SELECT t.id, t.slug, t.name, t.country, t.currency,
+              t.subscription_status, t.billing_type, t.is_active, t.created_at,
+              p.display_name AS plan_display_name, p.name AS plan_name
+       FROM tenants t
+       LEFT JOIN plans p ON p.id = t.plan_id
+       ORDER BY t.created_at DESC`
+    );
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    dbError = msg.includes('does not exist')
+      ? 'The tenants table does not exist yet. Run `pnpm run db:migrate:orders` to apply pending migrations.'
+      : 'Failed to load tenants. Check the server logs for details.';
+  }
 
   const canCreate = session.permissions.includes('admins.create');
 
@@ -60,6 +70,13 @@ export default async function TenantsPage() {
           </Link>
         )}
       </div>
+
+      {dbError && (
+        <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-5 py-4">
+          <p className="text-sm font-medium text-red-700">Database Error</p>
+          <p className="mt-1 text-sm text-red-600">{dbError}</p>
+        </div>
+      )}
 
       {/* Stats */}
       <div className="mb-8 grid gap-4 sm:grid-cols-4">

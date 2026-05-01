@@ -32,22 +32,22 @@ BEGIN
   -- Only insert if no Canadian rates exist yet
   IF NOT EXISTS (SELECT 1 FROM tax_rates WHERE country = 'CA') THEN
     -- HST provinces (combined federal + provincial in one rate)
-    INSERT INTO tax_rates (state_code, rate, effective_date, is_active, country, tax_type, tenant_id) VALUES
-      ('NB', 0.15,    effective, true, 'CA', 'HST', icc_tenant_id), -- New Brunswick 15%
-      ('NL', 0.15,    effective, true, 'CA', 'HST', icc_tenant_id), -- Newfoundland & Labrador 15%
-      ('NS', 0.15,    effective, true, 'CA', 'HST', icc_tenant_id), -- Nova Scotia 15%
-      ('ON', 0.13,    effective, true, 'CA', 'HST', icc_tenant_id), -- Ontario 13%
-      ('PE', 0.15,    effective, true, 'CA', 'HST', icc_tenant_id), -- Prince Edward Island 15%
+    INSERT INTO tax_rates (state_code, rate, effective_date, is_active, country, tax_type, tenant_id, created_by) VALUES
+      ('NB', 0.15,    effective, true, 'CA', 'HST', icc_tenant_id, 'system'), -- New Brunswick 15%
+      ('NL', 0.15,    effective, true, 'CA', 'HST', icc_tenant_id, 'system'), -- Newfoundland & Labrador 15%
+      ('NS', 0.15,    effective, true, 'CA', 'HST', icc_tenant_id, 'system'), -- Nova Scotia 15%
+      ('ON', 0.13,    effective, true, 'CA', 'HST', icc_tenant_id, 'system'), -- Ontario 13%
+      ('PE', 0.15,    effective, true, 'CA', 'HST', icc_tenant_id, 'system'), -- Prince Edward Island 15%
     -- GST-only provinces/territories (5% federal, no provincial added here)
-      ('AB', 0.05,    effective, true, 'CA', 'GST', icc_tenant_id), -- Alberta 5%
-      ('NT', 0.05,    effective, true, 'CA', 'GST', icc_tenant_id), -- Northwest Territories 5%
-      ('NU', 0.05,    effective, true, 'CA', 'GST', icc_tenant_id), -- Nunavut 5%
-      ('YT', 0.05,    effective, true, 'CA', 'GST', icc_tenant_id), -- Yukon 5%
+      ('AB', 0.05,    effective, true, 'CA', 'GST', icc_tenant_id, 'system'), -- Alberta 5%
+      ('NT', 0.05,    effective, true, 'CA', 'GST', icc_tenant_id, 'system'), -- Northwest Territories 5%
+      ('NU', 0.05,    effective, true, 'CA', 'GST', icc_tenant_id, 'system'), -- Nunavut 5%
+      ('YT', 0.05,    effective, true, 'CA', 'GST', icc_tenant_id, 'system'), -- Yukon 5%
     -- GST + PST provinces (combined rate stored for simplicity)
-      ('BC', 0.12,    effective, true, 'CA', 'GST+PST', icc_tenant_id), -- BC: 5% GST + 7% PST
-      ('MB', 0.12,    effective, true, 'CA', 'GST+PST', icc_tenant_id), -- Manitoba: 5% GST + 7% PST
-      ('SK', 0.11,    effective, true, 'CA', 'GST+PST', icc_tenant_id), -- Saskatchewan: 5% GST + 6% PST
+      ('BC', 0.12,    effective, true, 'CA', 'GST+PST', icc_tenant_id, 'system'), -- BC: 5% GST + 7% PST
+      ('MB', 0.12,    effective, true, 'CA', 'GST+PST', icc_tenant_id, 'system'), -- Manitoba: 5% GST + 7% PST
+      ('SK', 0.11,    effective, true, 'CA', 'GST+PST', icc_tenant_id, 'system'), -- Saskatchewan: 5% GST + 6% PST
     -- GST + QST (Quebec)
-      ('QC', 0.14975, effective, true, 'CA', 'GST+QST', icc_tenant_id); -- Quebec: 5% GST + 9.975% QST
+      ('QC', 0.14975, effective, true, 'CA', 'GST+QST', icc_tenant_id, 'system'); -- Quebec: 5% GST + 9.975% QST
   END IF;
 END $$;
