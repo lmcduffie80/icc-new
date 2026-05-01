@@ -11,6 +11,18 @@ export const nonNegativeIntSchema = z.number().int().min(0);
 export const priceSchema = z.number().positive().multipleOf(0.01);
 export const zipCodeSchema = z.string().regex(/^\d{5}(-\d{4})?$/, 'Invalid ZIP code');
 
+// Canadian postal code: A1B 2C3 or A1B2C3
+export const caPostalCodeSchema = z
+  .string()
+  .regex(/^[A-Za-z]\d[A-Za-z][ -]?\d[A-Za-z]\d$/, 'Invalid Canadian postal code')
+  .transform((v) => v.toUpperCase().replace(/[- ]/, ' ').trim());
+
+// Country-aware postal code — validates format based on country
+export function postalCodeSchema(country: 'US' | 'CA' | string = 'US') {
+  if (country === 'CA') return caPostalCodeSchema;
+  return zipCodeSchema;
+}
+
 // Contact form validation
 export const contactFormSchema = z.object({
   name: nameSchema,
@@ -28,17 +40,37 @@ export const contactFormSchema = z.object({
 
 export type ContactFormData = z.infer<typeof contactFormSchema>;
 
-// Order validation
-export const addressSchema = z.object({
-  firstName: z.string().min(1).max(100).trim().optional(),
-  lastName: z.string().min(1).max(100).trim().optional(),
-  line1: z.string().min(1).max(200).trim(),
-  line2: z.string().max(200).trim().optional(),
-  city: z.string().min(1).max(100).trim(),
-  state: z.string().length(2).regex(/^[A-Z]{2}$/, 'State must be 2-letter code'),
-  zipCode: zipCodeSchema,
-  country: z.string().default('US'),
-});
+// Order validation — country-aware address schema
+export const addressSchema = z
+  .object({
+    firstName: z.string().min(1).max(100).trim().optional(),
+    lastName: z.string().min(1).max(100).trim().optional(),
+    line1: z.string().min(1).max(200).trim(),
+    line2: z.string().max(200).trim().optional(),
+    city: z.string().min(1).max(100).trim(),
+    state: z.string().length(2).regex(/^[A-Za-z]{2}$/, 'Must be a 2-letter state/province code'),
+    zipCode: z.string().min(4).max(10),
+    country: z.enum(['US', 'CA']).default('US'),
+  })
+  .superRefine((data, ctx) => {
+    if (data.country === 'CA') {
+      if (!/^[A-Za-z]\d[A-Za-z][ -]?\d[A-Za-z]\d$/.test(data.zipCode)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['zipCode'],
+          message: 'Invalid Canadian postal code (e.g. A1B 2C3)',
+        });
+      }
+    } else {
+      if (!/^\d{5}(-\d{4})?$/.test(data.zipCode)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['zipCode'],
+          message: 'Invalid ZIP code (e.g. 12345 or 12345-6789)',
+        });
+      }
+    }
+  });
 
 export const orderItemSchema = z.object({
   productId: z.string().uuid(),

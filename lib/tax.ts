@@ -9,6 +9,8 @@ export interface TaxRate {
   createdBy: string | null;
   createdAt: string;
   updatedAt: string;
+  country: string;
+  taxType: string | null;
 }
 
 interface DbTaxRate {
@@ -20,31 +22,38 @@ interface DbTaxRate {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  country: string;
+  tax_type: string | null;
 }
 
 /**
- * Get the current tax rate for a specific state
- * Returns 0 if no tax rate is configured for the state
- * @param state - Two-letter state code (e.g., 'CA', 'NY')
- * @returns Tax rate as decimal (e.g., 0.021 for 2.1%)
+ * Get the current tax rate for a specific state or province.
+ * @param stateOrProvince - Two-letter code (e.g., 'CA', 'ON')
+ * @param country - 'US' (default) or 'CA'
+ * @returns Tax rate as decimal (e.g., 0.13 for 13%)
  */
-export async function getTaxRateForState(state: string): Promise<number> {
-  if (!state || state.length !== 2) {
+export async function getTaxRateForState(
+  stateOrProvince: string,
+  country: string = 'US'
+): Promise<number> {
+  if (!stateOrProvince || stateOrProvince.length !== 2) {
     return 0;
   }
 
-  const stateCode = state.toUpperCase();
+  const code = stateOrProvince.toUpperCase();
+  const countryCode = country.toUpperCase();
 
   try {
     const result = await queryOne<DbTaxRate>(
       `SELECT rate 
        FROM tax_rates 
-       WHERE state_code = $1 
+       WHERE state_code = $1
+         AND country = $2
          AND is_active = true 
          AND effective_date <= NOW()
        ORDER BY effective_date DESC 
        LIMIT 1`,
-      [stateCode]
+      [code, countryCode]
     );
 
     if (!result) {
@@ -53,48 +62,52 @@ export async function getTaxRateForState(state: string): Promise<number> {
 
     return parseFloat(result.rate);
   } catch (error) {
-    console.error('Error fetching tax rate for state:', state, error);
+    console.error('Error fetching tax rate for state/province:', stateOrProvince, country, error);
     return 0;
   }
 }
 
 /**
- * Calculate tax amount for a given subtotal and state
- * Tax is only applied to the product subtotal, not shipping
+ * Calculate tax amount for a given subtotal, state/province, and country.
+ * Tax is only applied to the product subtotal, not shipping.
  * @param subtotal - Product subtotal amount
- * @param state - Two-letter state code
+ * @param stateOrProvince - Two-letter code
+ * @param country - 'US' (default) or 'CA'
  * @returns Tax amount rounded to 2 decimal places
  */
 export async function calculateTax(
   subtotal: number,
-  state: string
+  stateOrProvince: string,
+  country: string = 'US'
 ): Promise<number> {
   if (subtotal <= 0) {
     return 0;
   }
 
-  const rate = await getTaxRateForState(state);
+  const rate = await getTaxRateForState(stateOrProvince, country);
   const taxAmount = subtotal * rate;
-  
-  // Round to 2 decimal places
   return Math.round(taxAmount * 100) / 100;
 }
 
 /**
- * Get all active tax rates
- * Returns the currently active rate for each state
+ * Get all active tax rates, optionally filtered by country.
+ * Returns the currently active rate for each state/province.
+ * @param country - Optional: 'US' | 'CA'. If omitted returns all.
  * @returns Array of active tax rates
  */
-export async function getActiveTaxRates(): Promise<TaxRate[]> {
+export async function getActiveTaxRates(country?: string): Promise<TaxRate[]> {
   try {
     const results = await query<DbTaxRate>(
-      `SELECT DISTINCT ON (state_code) 
+      `SELECT DISTINCT ON (state_code, country) 
          id, state_code, rate, effective_date, is_active, 
-         created_by, created_at, updated_at
+         created_by, created_at, updated_at,
+         COALESCE(country, 'US') AS country,
+         tax_type
        FROM tax_rates 
        WHERE is_active = true 
          AND effective_date <= NOW()
-       ORDER BY state_code, effective_date DESC`
+         ${country ? `AND country = '${country.toUpperCase()}'` : ''}
+       ORDER BY state_code, country, effective_date DESC`
     );
 
     return results.map((row) => ({
@@ -106,6 +119,8 @@ export async function getActiveTaxRates(): Promise<TaxRate[]> {
       createdBy: row.created_by,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
+      country: row.country,
+      taxType: row.tax_type,
     }));
   } catch (error) {
     console.error('Error fetching active tax rates:', error);
@@ -114,25 +129,31 @@ export async function getActiveTaxRates(): Promise<TaxRate[]> {
 }
 
 /**
- * Get all tax rates (including historical) for a specific state
- * @param state - Two-letter state code
+ * Get all tax rates (including historical) for a specific state/province.
+ * @param stateOrProvince - Two-letter code
+ * @param country - 'US' (default) or 'CA'
  * @returns Array of tax rates ordered by effective date (newest first)
  */
-export async function getTaxRatesForState(state: string): Promise<TaxRate[]> {
-  if (!state || state.length !== 2) {
+export async function getTaxRatesForState(
+  stateOrProvince: string,
+  country: string = 'US'
+): Promise<TaxRate[]> {
+  if (!stateOrProvince || stateOrProvince.length !== 2) {
     return [];
   }
 
-  const stateCode = state.toUpperCase();
+  const stateCode = stateOrProvince.toUpperCase();
+  const countryCode = country.toUpperCase();
 
   try {
     const results = await query<DbTaxRate>(
       `SELECT id, state_code, rate, effective_date, is_active,
-         created_by, created_at, updated_at
+         created_by, created_at, updated_at,
+         COALESCE(country, 'US') AS country, tax_type
        FROM tax_rates 
-       WHERE state_code = $1
+       WHERE state_code = $1 AND COALESCE(country, 'US') = $2
        ORDER BY effective_date DESC`,
-      [stateCode]
+      [stateCode, countryCode]
     );
 
     return results.map((row) => ({
@@ -144,9 +165,11 @@ export async function getTaxRatesForState(state: string): Promise<TaxRate[]> {
       createdBy: row.created_by,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
+      country: row.country ?? 'US',
+      taxType: row.tax_type,
     }));
   } catch (error) {
-    console.error('Error fetching tax rates for state:', state, error);
+    console.error('Error fetching tax rates for state:', stateOrProvince, error);
     return [];
   }
 }
@@ -159,9 +182,10 @@ export async function getAllTaxRates(): Promise<TaxRate[]> {
   try {
     const results = await query<DbTaxRate>(
       `SELECT id, state_code, rate, effective_date, is_active,
-         created_by, created_at, updated_at
+         created_by, created_at, updated_at,
+         COALESCE(country, 'US') AS country, tax_type
        FROM tax_rates 
-       ORDER BY state_code, effective_date DESC`
+       ORDER BY country, state_code, effective_date DESC`
     );
 
     return results.map((row) => ({
@@ -173,6 +197,8 @@ export async function getAllTaxRates(): Promise<TaxRate[]> {
       createdBy: row.created_by,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
+      country: row.country ?? 'US',
+      taxType: row.tax_type,
     }));
   } catch (error) {
     console.error('Error fetching all tax rates:', error);
@@ -189,7 +215,8 @@ export async function getTaxRateById(id: string): Promise<TaxRate | null> {
   try {
     const result = await queryOne<DbTaxRate>(
       `SELECT id, state_code, rate, effective_date, is_active,
-         created_by, created_at, updated_at
+         created_by, created_at, updated_at,
+         COALESCE(country, 'US') AS country, tax_type
        FROM tax_rates 
        WHERE id = $1`,
       [id]
@@ -208,6 +235,8 @@ export async function getTaxRateById(id: string): Promise<TaxRate | null> {
       createdBy: result.created_by,
       createdAt: result.created_at,
       updatedAt: result.updated_at,
+      country: result.country ?? 'US',
+      taxType: result.tax_type,
     };
   } catch (error) {
     console.error('Error fetching tax rate by ID:', id, error);
@@ -249,7 +278,8 @@ export async function createTaxRate(
   const result = await queryOne<DbTaxRate>(
     `INSERT INTO tax_rates (state_code, rate, effective_date, is_active, created_by)
      VALUES ($1, $2, $3, true, $4)
-     RETURNING id, state_code, rate, effective_date, is_active, created_by, created_at, updated_at`,
+     RETURNING id, state_code, rate, effective_date, is_active, created_by, created_at, updated_at,
+               COALESCE(country, 'US') AS country, tax_type`,
     [stateCode.toUpperCase(), rate, dateValue, createdBy]
   );
 
@@ -266,6 +296,8 @@ export async function createTaxRate(
     createdBy: result.created_by,
     createdAt: result.created_at,
     updatedAt: result.updated_at,
+    country: result.country ?? 'US',
+    taxType: result.tax_type,
   };
 }
 
@@ -332,7 +364,8 @@ export async function updateTaxRate(
     `UPDATE tax_rates 
      SET ${updateFields.join(', ')}
      WHERE id = $${paramCount}
-     RETURNING id, state_code, rate, effective_date, is_active, created_by, created_at, updated_at`,
+     RETURNING id, state_code, rate, effective_date, is_active, created_by, created_at, updated_at,
+               COALESCE(country, 'US') AS country, tax_type`,
     values
   );
 
@@ -349,6 +382,8 @@ export async function updateTaxRate(
     createdBy: result.created_by,
     createdAt: result.created_at,
     updatedAt: result.updated_at,
+    country: result.country ?? 'US',
+    taxType: result.tax_type,
   };
 }
 

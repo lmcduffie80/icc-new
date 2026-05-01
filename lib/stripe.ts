@@ -143,12 +143,13 @@ export async function createPaymentIntent(
   amount: number,
   customerId: string,
   metadata: Record<string, string>,
-  options?: { receipt_email?: string; setupFutureUsage?: boolean }
+  options?: { receipt_email?: string; setupFutureUsage?: boolean; currency?: string }
 ): Promise<{ paymentIntent: Stripe.PaymentIntent; clientSecret: string }> {
   try {
+    const currency = (options?.currency ?? 'usd').toLowerCase();
     const paymentIntent = await stripe.paymentIntents.create({
       amount: Math.round(amount * 100), // Convert to cents
-      currency: 'usd',
+      currency,
       customer: customerId,
       metadata,
       payment_method_types: ['card'],
