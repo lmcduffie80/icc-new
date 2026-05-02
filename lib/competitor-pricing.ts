@@ -1,11 +1,21 @@
 /**
  * AI-powered competitor pricing fetcher.
  *
- * Given an active ingredient and a competitor distributor, this module uses
- * the Vercel AI Gateway (AI SDK v6) with Anthropic's native web search tool
- * to find current product listings on that competitor's site, and returns a
- * structured list of `{ productName, price, unitOfMeasure, containerSize,
- * sourceUrl }` rows validated against a Zod schema.
+ * Given an active ingredient (and optionally a packaging size) for a single
+ * competitor distributor, this module uses the Vercel AI Gateway (AI SDK v6)
+ * with Anthropic's native web search tool to find current product listings on
+ * that competitor's site, and returns a structured list of `{ productName,
+ * price, unitOfMeasure, containerSize, sourceUrl, packaging, retailerName }`
+ * rows validated against a Zod schema.
+ *
+ * Domain handling:
+ *   - When `competitor.base_url` is present (FBN, Forestry Distributing,
+ *     Chemical Warehouse), the agent is restricted to that domain via
+ *     `allowedDomains`.
+ *   - When `competitor.base_url` is null (the seeded "Open Web" pseudo-
+ *     competitor), `allowedDomains` is omitted so Claude can search across
+ *     any retailer. The actual retailer is captured per-listing on the
+ *     `retailerName` field.
  *
  * The agent never hallucinates prices: if no verifiable listing is found,
  * the caller records `fetch_status='not_found'` on the DB row instead of
@@ -23,13 +33,14 @@ import { generateText, stepCountIs } from 'ai';
 import { anthropic } from '@ai-sdk/anthropic';
 import { z } from 'zod';
 
-import type { ParsedIngredient } from './competitor-match';
-import { buildSearchQuery } from './competitor-match';
+import type { ParsedIngredient, ParsedPackaging } from './competitor-match';
+import { buildSearchQuery, parsePackaging, retailerNameFromUrl } from './competitor-match';
 
 export interface CompetitorInfo {
   id: string;
   name: string;
-  base_url: string;
+  /** NULL for the "Open Web" pseudo-competitor where the agent searches across any retailer. */
+  base_url: string | null;
   search_template: string | null;
 }
 
@@ -39,6 +50,12 @@ export interface CompetitorListing {
   unitOfMeasure: string | null;
   containerSize: string | null;
   sourceUrl: string;
+  /** Direct URL to the product image on the competitor's page. NULL when not found. */
+  imageUrl: string | null;
+  /** Parsed packaging derived from `containerSize` (or null when unparseable). */
+  packaging: ParsedPackaging | null;
+  /** Retailer extracted from `sourceUrl` hostname (only meaningful for open-web hits). */
+  retailerName: string | null;
 }
 
 export type FetchOutcome =
@@ -55,6 +72,9 @@ const listingSchema = z.object({
   unitOfMeasure: z.string().nullable().optional(),
   containerSize: z.string().nullable().optional(),
   sourceUrl: z.string().url(),
+  // Image URLs are optional. We accept any URL the agent reports, then the
+  // browser falls back to a generic placeholder if the URL 404s.
+  imageUrl: z.string().url().nullable().optional(),
 });
 
 const responseSchema = z.object({
@@ -64,17 +84,20 @@ const responseSchema = z.object({
 
 const AGENT_SYSTEM_PROMPT = `You are a pricing research assistant for an agricultural chemicals retailer.
 
-Your task: given an active ingredient and a specific competitor distributor, use web search to find currently listed products on that distributor's site that contain that active ingredient at the requested concentration, and return them as structured JSON.
+Your task: given an active ingredient (and optionally a target packaging size), use web search to find currently listed products on the requested retailer(s) that contain that active ingredient at the requested concentration AND match the requested packaging, and return them as structured JSON.
 
 Rules:
-1. ONLY return products sold on the specified competitor's site. Never return listings from other retailers.
-2. ONLY return products where you can verify the active ingredient and concentration from the competitor's product page.
-3. ONLY return a price if you see it explicitly on the competitor's page. Never estimate or guess.
+1. ONLY return products from the requested retailer scope. If the user provides a competitor site, listings MUST be hosted on that site. If the user opens up the search to the open web, return listings from any legitimate retailer but capture the full direct product page URL.
+2. ONLY return products where you can verify the active ingredient and concentration from the product page.
+3. ONLY return a price if you see it explicitly on the product page. Never estimate or guess.
 4. The sourceUrl MUST be the direct product page URL, not a search results page.
-5. Return between 0 and 3 listings — pick the best matches, not exhaustive results.
-6. If no matching products are found on the competitor's site, return an empty array.
-7. Prices must be in USD as a plain number (e.g. 149.99), with no currency symbols.
-8. Units must be normalized to one of: "gal", "qt", "pt", "fl oz", "lb", "oz", "each", "case".`;
+5. When a target packaging size is provided (e.g. "2.5 gal"), ONLY return listings that match that packaging within roughly 5% — exclude bulk drums, totes, cases, and unrelated sizes.
+6. Return between 0 and 3 listings — pick the best matches, not exhaustive results.
+7. If no matching products are found, return an empty array.
+8. Prices must be in USD as a plain number (e.g. 149.99), with no currency symbols.
+9. Units must be normalized to one of: "gal", "qt", "pt", "fl oz", "lb", "oz", "each", "case".
+10. Always populate containerSize when known (e.g. "2.5 gal", "30 gal", "1 qt", "50 lb"). Leave null only if the page genuinely does not state the size.
+11. Always populate imageUrl with a direct URL to the primary product image on the product page (typically the hero/main product photo). Use the absolute URL — not a thumbnail, not a base64 data URI, not a relative path. Use null only if the page truly has no product image you can extract.`;
 
 /**
  * Model used for competitor pricing research. Plain `provider/model` strings
@@ -85,27 +108,41 @@ Rules:
 const MODEL = anthropic('claude-sonnet-4-5-20250929');
 
 /**
- * Fetch current competitor listings for a single (competitor, ingredient)
- * pair. Safe to call in parallel — the caller is responsible for concurrency
- * limits and persistence.
+ * Fetch current competitor listings for a single (competitor, ingredient,
+ * packaging) tuple. Safe to call in parallel — the caller is responsible for
+ * concurrency limits and persistence.
+ *
+ * `packaging` is optional: when null, the agent is asked to find any
+ * packaging size for the ingredient, which is useful for products whose
+ * `containerSizes` attribute is unparseable.
  */
 export async function fetchCompetitorListings(
   competitor: CompetitorInfo,
   ingredient: ParsedIngredient,
+  packaging: ParsedPackaging | null = null,
   options: { signal?: AbortSignal } = {}
 ): Promise<FetchOutcome> {
-  const searchQuery = buildSearchQuery(competitor.search_template, ingredient);
+  const isOpenWeb = !competitor.base_url;
+  const searchQuery = buildSearchQuery(competitor.search_template, ingredient, packaging);
   const concentrationText = ingredient.concentration !== null
     ? `${ingredient.concentration}%`
     : 'any concentration';
+  const packagingText = packaging
+    ? `${packaging.display} containers (match within ~5%)`
+    : 'any container size';
+
+  const scopeLine = isOpenWeb
+    ? 'Search scope: open web — search across any legitimate retailer (Amazon, Tractor Supply, manufacturer sites, Do My Own, etc.). Capture the full product page URL on the retailer\'s domain.'
+    : `Competitor site: ${competitor.base_url}\nSearch scope: only listings hosted on ${competitor.base_url}.`;
 
   const prompt = `Competitor: ${competitor.name}
-Competitor site: ${competitor.base_url}
+${scopeLine}
 Active ingredient: ${ingredient.display}
 Target concentration: ${concentrationText}
+Target packaging: ${packagingText}
 Suggested search query: ${searchQuery}
 
-Find up to 3 current product listings on ${competitor.name} that contain ${ingredient.display} at ${concentrationText}. Use web search scoped to ${competitor.base_url}. Return a JSON object with the shape:
+Find up to 3 current product listings that contain ${ingredient.display} at ${concentrationText} in ${packagingText}. ${isOpenWeb ? 'Use web search across the open web.' : `Use web search scoped to ${competitor.base_url}.`} Return a JSON object with the shape:
 
 {
   "listings": [
@@ -114,7 +151,8 @@ Find up to 3 current product listings on ${competitor.name} that contain ${ingre
       "price": number,
       "unitOfMeasure": string | null,
       "containerSize": string | null,
-      "sourceUrl": string
+      "sourceUrl": string,
+      "imageUrl": string | null
     }
   ],
   "notes": string (optional — reason if no listings found)
@@ -122,18 +160,23 @@ Find up to 3 current product listings on ${competitor.name} that contain ${ingre
 
 Return ONLY the JSON object, no prose.`;
 
+  // Anthropic's webSearch tool only restricts to allowedDomains when the
+  // option is set. For the open-web bucket we omit it entirely so Claude
+  // can browse any retailer. We also bump maxUses for open-web to allow
+  // broader exploration across multiple retailers.
+  const webSearchOptions = isOpenWeb
+    ? { maxUses: 6 }
+    : { maxUses: 4, allowedDomains: [new URL(competitor.base_url!).hostname] };
+
   try {
     const result = await generateText({
       model: MODEL,
       system: AGENT_SYSTEM_PROMPT,
       prompt,
       tools: {
-        web_search: anthropic.tools.webSearch_20250305({
-          maxUses: 4,
-          allowedDomains: [new URL(competitor.base_url).hostname],
-        }),
+        web_search: anthropic.tools.webSearch_20250305(webSearchOptions),
       },
-      stopWhen: stepCountIs(6),
+      stopWhen: stepCountIs(isOpenWeb ? 8 : 6),
       abortSignal: options.signal,
     });
 
@@ -163,17 +206,24 @@ Return ONLY the JSON object, no prose.`;
     if (validated.data.listings.length === 0) {
       return {
         status: 'not_found',
-        reason: validated.data.notes ?? 'No matching listings on competitor site',
+        reason: validated.data.notes ?? 'No matching listings found',
       };
     }
 
-    const listings: CompetitorListing[] = validated.data.listings.map((l) => ({
-      productName: l.productName,
-      price: l.price,
-      unitOfMeasure: l.unitOfMeasure ?? null,
-      containerSize: l.containerSize ?? null,
-      sourceUrl: l.sourceUrl,
-    }));
+    const listings: CompetitorListing[] = validated.data.listings.map((l) => {
+      const containerSize = l.containerSize ?? null;
+      const unitOfMeasure = l.unitOfMeasure ?? null;
+      return {
+        productName: l.productName,
+        price: l.price,
+        unitOfMeasure,
+        containerSize,
+        sourceUrl: l.sourceUrl,
+        imageUrl: l.imageUrl ?? null,
+        packaging: parsePackaging(containerSize, unitOfMeasure),
+        retailerName: isOpenWeb ? retailerNameFromUrl(l.sourceUrl) : null,
+      };
+    });
 
     return { status: 'ok', listings };
   } catch (err) {

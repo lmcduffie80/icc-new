@@ -4,16 +4,27 @@
  * admin manual-trigger at `/api/admin/competitors/refresh`.
  *
  * Given a scope (all, single ingredient, or single product) this module:
- *   1. Collects distinct normalized active ingredients from `products`.
- *   2. Loads active competitors from `competitors`.
- *   3. Calls the AI fetch agent per (competitor, ingredient) pair with a
- *      bounded concurrency limit.
+ *   1. Collects distinct (normalized active ingredient × packaging) tuples
+ *      from `products`. Same ingredient at different packaging sizes
+ *      (e.g. 2.5 gal vs 30 gal glyphosate) are independent fetches so
+ *      competitor results match the actual SKU shape.
+ *   2. Loads active competitors from `competitors`. The seeded "Open Web"
+ *      pseudo-competitor (base_url = NULL) participates like any other —
+ *      the agent layer drops `allowedDomains` for that one.
+ *   3. Calls the AI fetch agent per (competitor, ingredient, packaging)
+ *      tuple with a bounded concurrency limit.
  *   4. Upserts results into `competitor_products` with status `ok`,
- *      `not_found`, or `failed`.
+ *      `not_found`, or `failed`, including the packaging columns added
+ *      in migration 091.
  */
 
 import { query } from './db';
-import { primaryActiveIngredient, type ParsedIngredient } from './competitor-match';
+import {
+  parsePackaging,
+  primaryActiveIngredient,
+  type ParsedIngredient,
+  type ParsedPackaging,
+} from './competitor-match';
 import {
   fetchCompetitorListings,
   type CompetitorInfo,
@@ -21,7 +32,7 @@ import {
 } from './competitor-pricing';
 
 export interface RefreshScope {
-  /** Limit to a single product (by id) — derives its primary ingredient. */
+  /** Limit to a single product (by id) — derives its primary ingredient + packaging. */
   productId?: string;
   /** Limit to a single ingredient (matches `normalized_active_ingredient`). */
   ingredient?: string;
@@ -42,34 +53,57 @@ export interface RefreshSummary {
 
 interface ProductIngredientRow {
   attributes: Record<string, string> | null;
+  unit_of_measure: string | null;
 }
 
-/** Fetch the distinct set of parsed primary active ingredients to refresh. */
-async function collectIngredients(scope: RefreshScope): Promise<ParsedIngredient[]> {
+interface IngredientPackaging {
+  ingredient: ParsedIngredient;
+  packaging: ParsedPackaging | null;
+}
+
+/**
+ * Fetch the distinct set of (parsed primary ingredient × packaging) tuples
+ * to refresh. A glyphosate 41% product sold as both 2.5 gal and 30 gal
+ * generates two tuples so each container size gets its own competitor scan.
+ */
+async function collectIngredientPackagings(
+  scope: RefreshScope
+): Promise<IngredientPackaging[]> {
   let rows: ProductIngredientRow[] = [];
 
   if (scope.productId) {
     rows = await query<ProductIngredientRow>(
-      `SELECT attributes FROM products WHERE id = $1 AND COALESCE(deleted_at, NULL) IS NULL`,
+      `SELECT attributes, unit_of_measure
+         FROM products
+        WHERE id = $1
+          AND COALESCE(deleted_at, NULL) IS NULL`,
       [scope.productId]
     );
   } else {
     rows = await query<ProductIngredientRow>(
-      `SELECT attributes
+      `SELECT attributes, unit_of_measure
          FROM products
         WHERE attributes ? 'activeIngredients'
           AND COALESCE(deleted_at, NULL) IS NULL`
     );
   }
 
-  const byKey = new Map<string, ParsedIngredient>();
+  const byKey = new Map<string, IngredientPackaging>();
   for (const row of rows) {
     const raw = row.attributes?.activeIngredients;
-    const parsed = primaryActiveIngredient(raw);
-    if (!parsed) continue;
-    if (scope.ingredient && parsed.normalized !== scope.ingredient.toLowerCase()) continue;
-    const key = `${parsed.normalized}|${parsed.concentration ?? ''}`;
-    if (!byKey.has(key)) byKey.set(key, parsed);
+    const ingredient = primaryActiveIngredient(raw);
+    if (!ingredient) continue;
+    if (scope.ingredient && ingredient.normalized !== scope.ingredient.toLowerCase()) continue;
+
+    const containerSizes = row.attributes?.containerSizes ?? null;
+    const packaging = parsePackaging(containerSizes, row.unit_of_measure);
+
+    const key = [
+      ingredient.normalized,
+      ingredient.concentration ?? '',
+      packaging?.canonical ?? '',
+    ].join('|');
+    if (!byKey.has(key)) byKey.set(key, { ingredient, packaging });
   }
   return Array.from(byKey.values());
 }
@@ -97,17 +131,31 @@ async function collectCompetitors(scope: RefreshScope): Promise<CompetitorInfo[]
 async function upsertListing(
   competitorId: string,
   ingredient: ParsedIngredient,
+  packaging: ParsedPackaging | null,
   listing: CompetitorListing
 ): Promise<void> {
+  // Prefer the packaging the agent reported on the listing itself, falling
+  // back to the requested packaging when the listing didn't include a
+  // parseable size.
+  const effectivePackaging = listing.packaging ?? packaging;
+
   await query(
     `INSERT INTO competitor_products (
        competitor_id, product_name, normalized_active_ingredient,
        concentration_percent, price, unit_of_measure, container_size,
-       source_url, last_fetched_at, fetch_status, raw_response, updated_at
+       source_url, last_fetched_at, fetch_status, raw_response,
+       package_canonical, package_size_value, package_size_unit, retailer_name,
+       image_url, updated_at
      ) VALUES (
-       $1, $2, $3, $4, $5, $6, $7, $8, NOW(), 'ok', $9, NOW()
+       $1, $2, $3, $4, $5, $6, $7, $8, NOW(), 'ok', $9,
+       $10, $11, $12, $13, $14, NOW()
      )
-     ON CONFLICT (competitor_id, normalized_active_ingredient, COALESCE(concentration_percent, -1))
+     ON CONFLICT (
+       competitor_id, normalized_active_ingredient,
+       COALESCE(concentration_percent, -1),
+       COALESCE(package_canonical, ''),
+       COALESCE(source_url, '')
+     )
        WHERE fetch_status = 'ok'
      DO UPDATE SET
        product_name = EXCLUDED.product_name,
@@ -117,6 +165,11 @@ async function upsertListing(
        source_url = EXCLUDED.source_url,
        last_fetched_at = EXCLUDED.last_fetched_at,
        raw_response = EXCLUDED.raw_response,
+       package_canonical = EXCLUDED.package_canonical,
+       package_size_value = EXCLUDED.package_size_value,
+       package_size_unit = EXCLUDED.package_size_unit,
+       retailer_name = EXCLUDED.retailer_name,
+       image_url = EXCLUDED.image_url,
        updated_at = NOW()`,
     [
       competitorId,
@@ -128,6 +181,11 @@ async function upsertListing(
       listing.containerSize,
       listing.sourceUrl,
       JSON.stringify(listing),
+      effectivePackaging?.canonical ?? null,
+      effectivePackaging?.sizeValue ?? null,
+      effectivePackaging?.sizeUnit ?? null,
+      listing.retailerName,
+      listing.imageUrl,
     ]
   );
 }
@@ -135,6 +193,7 @@ async function upsertListing(
 async function recordNonOk(
   competitorId: string,
   ingredient: ParsedIngredient,
+  packaging: ParsedPackaging | null,
   status: 'failed' | 'not_found',
   reason: string
 ): Promise<void> {
@@ -143,9 +202,11 @@ async function recordNonOk(
   await query(
     `INSERT INTO competitor_products (
        competitor_id, product_name, normalized_active_ingredient,
-       concentration_percent, fetch_status, raw_response, last_fetched_at
+       concentration_percent, fetch_status, raw_response, last_fetched_at,
+       package_canonical, package_size_value, package_size_unit
      ) VALUES (
-       $1, $2, $3, $4, $5, $6, NOW()
+       $1, $2, $3, $4, $5, $6, NOW(),
+       $7, $8, $9
      )`,
     [
       competitorId,
@@ -154,6 +215,9 @@ async function recordNonOk(
       ingredient.concentration,
       status,
       JSON.stringify({ reason }),
+      packaging?.canonical ?? null,
+      packaging?.sizeValue ?? null,
+      packaging?.sizeUnit ?? null,
     ]
   );
 }
@@ -186,13 +250,13 @@ async function pMap<T, R>(
 export async function refreshCompetitorPricing(
   scope: RefreshScope = {}
 ): Promise<RefreshSummary> {
-  const [ingredients, competitors] = await Promise.all([
-    collectIngredients(scope),
+  const [tuples, competitors] = await Promise.all([
+    collectIngredientPackagings(scope),
     collectCompetitors(scope),
   ]);
 
   const summary: RefreshSummary = {
-    ingredientsProcessed: ingredients.length,
+    ingredientsProcessed: tuples.length,
     competitorsProcessed: competitors.length,
     listingsUpserted: 0,
     notFound: 0,
@@ -200,29 +264,37 @@ export async function refreshCompetitorPricing(
     errors: [],
   };
 
-  if (ingredients.length === 0 || competitors.length === 0) return summary;
+  if (tuples.length === 0 || competitors.length === 0) return summary;
 
-  const pairs: Array<{ competitor: CompetitorInfo; ingredient: ParsedIngredient }> = [];
+  const pairs: Array<{
+    competitor: CompetitorInfo;
+    ingredient: ParsedIngredient;
+    packaging: ParsedPackaging | null;
+  }> = [];
   for (const competitor of competitors) {
-    for (const ingredient of ingredients) {
-      pairs.push({ competitor, ingredient });
+    for (const { ingredient, packaging } of tuples) {
+      pairs.push({ competitor, ingredient, packaging });
     }
   }
 
   await pMap(
     pairs,
-    async ({ competitor, ingredient }) => {
-      const outcome = await fetchCompetitorListings(competitor, ingredient);
+    async ({ competitor, ingredient, packaging }) => {
+      const outcome = await fetchCompetitorListings(competitor, ingredient, packaging);
+      const ingredientLabel = packaging
+        ? `${ingredient.display} · ${packaging.display}`
+        : ingredient.display;
+
       if (outcome.status === 'ok') {
         for (const listing of outcome.listings) {
           try {
-            await upsertListing(competitor.id, ingredient, listing);
+            await upsertListing(competitor.id, ingredient, packaging, listing);
             summary.listingsUpserted++;
           } catch (err) {
             summary.failed++;
             summary.errors.push({
               competitor: competitor.name,
-              ingredient: ingredient.display,
+              ingredient: ingredientLabel,
               reason: err instanceof Error ? err.message : 'upsert failed',
             });
           }
@@ -230,7 +302,7 @@ export async function refreshCompetitorPricing(
       } else if (outcome.status === 'not_found') {
         summary.notFound++;
         try {
-          await recordNonOk(competitor.id, ingredient, 'not_found', outcome.reason);
+          await recordNonOk(competitor.id, ingredient, packaging, 'not_found', outcome.reason);
         } catch {
           // audit insert failure is non-fatal
         }
@@ -238,11 +310,11 @@ export async function refreshCompetitorPricing(
         summary.failed++;
         summary.errors.push({
           competitor: competitor.name,
-          ingredient: ingredient.display,
+          ingredient: ingredientLabel,
           reason: outcome.reason,
         });
         try {
-          await recordNonOk(competitor.id, ingredient, 'failed', outcome.reason);
+          await recordNonOk(competitor.id, ingredient, packaging, 'failed', outcome.reason);
         } catch {
           // audit insert failure is non-fatal
         }

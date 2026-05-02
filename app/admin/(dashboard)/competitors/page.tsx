@@ -7,7 +7,7 @@ export interface CompetitorRow {
   id: string;
   name: string;
   slug: string;
-  base_url: string;
+  base_url: string | null;
   search_template: string | null;
   is_active: boolean;
   listing_count: number;
@@ -26,6 +26,9 @@ export interface CompetitorListingRow {
   price: number | null;
   unit_of_measure: string | null;
   container_size: string | null;
+  package_canonical: string | null;
+  retailer_name: string | null;
+  image_url: string | null;
   source_url: string | null;
   fetch_status: 'ok' | 'failed' | 'not_found';
   last_fetched_at: string;
@@ -63,6 +66,9 @@ async function getRecentListings(): Promise<CompetitorListingRow[]> {
       cp.price::float AS price,
       cp.unit_of_measure,
       cp.container_size,
+      cp.package_canonical,
+      cp.retailer_name,
+      cp.image_url,
       cp.source_url,
       cp.fetch_status,
       cp.last_fetched_at::text AS last_fetched_at

@@ -7,6 +7,34 @@ import { formatPrice } from '@/lib/utils';
 import { ExternalLink, Loader2, RefreshCw } from 'lucide-react';
 import type { CompetitorRow, CompetitorListingRow } from './page';
 
+/**
+ * Tiny competitor product thumbnail. Falls back to a placeholder when the
+ * URL is missing or the image fails to load. Uses a plain <img> rather than
+ * next/image because competitor hostnames are unbounded (especially under
+ * the open-web bucket).
+ */
+function ListingThumbnail({ src, alt }: { src: string | null; alt: string }) {
+  const [errored, setErrored] = useState(false);
+  if (!src || errored) {
+    return (
+      <div className="flex h-8 w-8 items-center justify-center rounded border bg-slate-100 text-[8px] uppercase text-slate-400">
+        —
+      </div>
+    );
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={src}
+      alt={alt}
+      loading="lazy"
+      referrerPolicy="no-referrer"
+      onError={() => setErrored(true)}
+      className="h-8 w-8 rounded border bg-white object-contain"
+    />
+  );
+}
+
 type StatusFilter = 'all' | 'ok' | 'failed' | 'not_found' | 'stale';
 
 interface Props {
@@ -157,14 +185,20 @@ export function CompetitorsClient({ initialCompetitors, initialListings, canMana
                 <tr key={c.id} className="border-t">
                   <td className="px-4 py-3 font-medium text-slate-900">{c.name}</td>
                   <td className="px-4 py-3">
-                    <a
-                      href={c.base_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-primary hover:underline"
-                    >
-                      {c.base_url} <ExternalLink className="h-3 w-3" />
-                    </a>
+                    {c.base_url ? (
+                      <a
+                        href={c.base_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-primary hover:underline"
+                      >
+                        {c.base_url} <ExternalLink className="h-3 w-3" />
+                      </a>
+                    ) : (
+                      <span className="text-xs italic text-slate-500">
+                        Open web (any retailer)
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-right font-mono tabular-nums">
                     {c.listing_count}
@@ -248,8 +282,10 @@ export function CompetitorsClient({ initialCompetitors, initialListings, canMana
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
               <tr>
+                <th className="px-4 py-3 w-16">Image</th>
                 <th className="px-4 py-3">Competitor</th>
                 <th className="px-4 py-3">Ingredient</th>
+                <th className="px-4 py-3">Packaging</th>
                 <th className="px-4 py-3">Product</th>
                 <th className="px-4 py-3 text-right">Price</th>
                 <th className="px-4 py-3">Status</th>
@@ -260,12 +296,23 @@ export function CompetitorsClient({ initialCompetitors, initialListings, canMana
             <tbody>
               {filteredListings.map((l) => (
                 <tr key={l.id} className="border-t">
+                  <td className="px-4 py-3">
+                    <ListingThumbnail src={l.image_url} alt={l.product_name} />
+                  </td>
                   <td className="px-4 py-3 font-medium text-slate-900">
-                    {l.competitor_name}
+                    {l.retailer_name ?? l.competitor_name}
+                    {l.retailer_name && (
+                      <span className="ml-1 text-xs font-normal text-slate-500">
+                        via {l.competitor_name}
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     {l.normalized_active_ingredient}
                     {l.concentration_percent !== null && ` · ${l.concentration_percent}%`}
+                  </td>
+                  <td className="px-4 py-3 font-mono text-xs text-slate-600">
+                    {l.package_canonical ?? '—'}
                   </td>
                   <td className="px-4 py-3 text-slate-600">
                     {l.product_name}
@@ -315,7 +362,7 @@ export function CompetitorsClient({ initialCompetitors, initialListings, canMana
               ))}
               {filteredListings.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={9} className="px-4 py-6 text-center text-slate-500">
                     No listings match the current filters.
                   </td>
                 </tr>

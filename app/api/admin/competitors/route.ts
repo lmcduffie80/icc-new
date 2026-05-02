@@ -7,7 +7,7 @@ interface CompetitorRow {
   id: string;
   name: string;
   slug: string;
-  base_url: string;
+  base_url: string | null;
   search_template: string | null;
   is_active: boolean;
   created_at: string;
