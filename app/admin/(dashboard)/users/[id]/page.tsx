@@ -3,7 +3,7 @@ import { query, queryOne } from '@/lib/db';
 import { redirect, notFound } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { ArrowLeft, User as UserIcon, Mail, Calendar, ShoppingBag, Wheat, MapPin, Sprout, LandPlot } from 'lucide-react';
+import { ArrowLeft, User as UserIcon, Mail, Calendar, ShoppingBag, Wheat, MapPin, Sprout, LandPlot, Hash } from 'lucide-react';
 import { UserActions } from './user-actions';
 
 interface User {
@@ -20,6 +20,7 @@ interface UserProfile {
   id: string;
   user_id: string;
   phone: string | null;
+  customer_number: string | null;
 }
 
 interface Order {
@@ -195,6 +196,17 @@ export default async function UserDetailPage({
                   </p>
                 </div>
               </div>
+              {user.profile?.customer_number && (
+                <div className="flex items-center gap-3">
+                  <Hash className="h-5 w-5 text-slate-400" />
+                  <div>
+                    <p className="text-sm text-slate-500">Customer Number</p>
+                    <p className="font-medium font-mono text-slate-900">
+                      {user.profile.customer_number}
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 

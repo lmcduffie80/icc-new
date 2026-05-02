@@ -30,14 +30,13 @@ async function getCustomerInvoices(): Promise<CustomerInvoice[]> {
       o.created_at AS upload_date,
       u.name AS customer_name,
       u.email,
-      oa.state AS invoice_state,
+      (o.shipping_address->>'state') AS invoice_state,
       '' AS filename,
       '' AS file_url,
-      oa.address AS shipping_address,
+      (o.shipping_address->>'line1') AS shipping_address,
       up.phone AS profile_phone
     FROM orders o
     JOIN "user" u ON u.id = o.user_id
-    LEFT JOIN order_addresses oa ON oa.order_id = o.id AND oa.type = 'shipping'
     LEFT JOIN user_profiles up ON up.user_id = u.id
     ORDER BY o.created_at DESC
     LIMIT 500

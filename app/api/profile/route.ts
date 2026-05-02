@@ -7,6 +7,7 @@ interface DbUserProfile {
   id: string;
   user_id: string;
   phone: string | null;
+  customer_number: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -54,6 +55,7 @@ export async function GET() {
         id: profile?.id,
         userId: profile?.user_id,
         phone: profile?.phone || null,
+        customerNumber: profile?.customer_number || null,
         name: user?.name || null,
         email: user?.email,
         image: user?.image || null,

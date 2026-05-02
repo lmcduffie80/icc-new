@@ -224,13 +224,17 @@ export async function POST(request: NextRequest) {
       return createRateLimitResponse(rateLimitResult.reset);
     }
 
+    const requestHeaders = await headers();
     session = await auth.api.getSession({
-      headers: await headers(),
+      headers: requestHeaders,
     });
 
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    // Tenant context from middleware headers (set by tenant resolution)
+    const tenantId = requestHeaders.get('x-tenant-id') ?? null;
 
     const body = await request.json();
     
@@ -601,9 +605,9 @@ export async function POST(request: NextRequest) {
           user_id, order_number, status, shipping_address, billing_address,
           delivery_method, delivery_fee, subtotal, tax, total,
           stripe_payment_intent_id, payment_status, tax_rate, metadata,
-          has_restricted_products, freight_quote_id, shipping_carrier
+          has_restricted_products, freight_quote_id, shipping_carrier, tenant_id
         )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
          RETURNING *`,
         [
           session.user.id,
@@ -623,6 +627,7 @@ export async function POST(request: NextRequest) {
           orderValidation.hasRestrictedProducts,
           freightQuoteId,
           shippingCarrier,
+          tenantId,
         ]
       );
 

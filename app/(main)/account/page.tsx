@@ -1,19 +1,33 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useAuth } from '@/components/auth-provider';
 import { signOut } from '@/lib/auth-client';
 import { Button } from '@/components/ui/button';
-import { LogOut, ChevronRight } from 'lucide-react';
+import { LogOut, ChevronRight, Hash } from 'lucide-react';
 import { accountNavItems } from '@/lib/account-navigation';
 import { CommodityPriceBanner } from '@/components/commodity-price-banner';
 
 export default function AccountPage() {
   const router = useRouter();
   const { user, isPending } = useAuth();
+  const [customerNumber, setCustomerNumber] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (user) {
+      fetch('/api/profile')
+        .then((r) => r.json())
+        .then((data) => {
+          if (data?.profile?.customerNumber) {
+            setCustomerNumber(data.profile.customerNumber);
+          }
+        })
+        .catch(() => null);
+    }
+  }, [user]);
 
   useEffect(() => {
     if (!isPending && !user) {
@@ -81,6 +95,12 @@ export default function AccountPage() {
             <div className="flex-1">
               <h2 className="text-xl font-semibold">{user.name}</h2>
               <p className="text-muted-foreground">{user.email}</p>
+              {customerNumber && (
+                <div className="mt-1.5 inline-flex items-center gap-1.5 rounded-md bg-muted px-2 py-0.5 text-xs font-mono font-medium text-muted-foreground">
+                  <Hash className="h-3 w-3" />
+                  {customerNumber}
+                </div>
+              )}
             </div>
             <Button variant="outline" onClick={handleSignOut} className="gap-2">
               <LogOut className="h-4 w-4" />

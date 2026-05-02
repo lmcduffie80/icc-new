@@ -8,6 +8,7 @@ const BYPASS_PREFIXES = [
   '/api/supplier',
   '/api/auth',
   '/api/webhooks',
+  '/api/internal',
   '/_next',
   '/favicon.ico',
   '/robots.txt',
@@ -16,6 +17,9 @@ const BYPASS_PREFIXES = [
 
 // Known tenant-independent API routes
 const STATIC_API_PREFIXES = ['/api/categories', '/api/products'];
+
+// The impersonation "end" route must stay accessible from the portal
+const IMPERSONATION_COOKIE = 'admin_impersonation_token';
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -83,6 +87,33 @@ export async function middleware(request: NextRequest) {
   requestHeaders.set('x-tenant-subscription', tenant.subscription_status ?? 'active');
   requestHeaders.set('x-past-due', tenant.subscription_status === 'past_due' ? '1' : '0');
   requestHeaders.set('x-mfa-required', tenant.mfa_required ? '1' : '0');
+
+  // ── Impersonation detection ──────────────────────────────────────────────
+  // If the request carries an impersonation token, validate it via the
+  // internal API (avoids importing pg/Node modules into the Edge runtime).
+  const impersonationToken = request.cookies.get(IMPERSONATION_COOKIE)?.value;
+  if (impersonationToken) {
+    const impersonationRes = await fetch(
+      new URL('/api/internal/impersonation', request.url),
+      {
+        headers: {
+          'x-internal-secret': process.env.INTERNAL_API_SECRET ?? '',
+          'x-impersonation-token': impersonationToken,
+        },
+      }
+    ).catch(() => null);
+
+    if (impersonationRes?.ok) {
+      const imp = await impersonationRes.json().catch(() => null);
+      if (imp) {
+        requestHeaders.set('x-impersonating-user-id', imp.target_user_id);
+        requestHeaders.set('x-impersonating-user-name', imp.target_user_name ?? '');
+        requestHeaders.set('x-impersonating-admin-id', imp.admin_user_id);
+        requestHeaders.set('x-impersonating-admin-name', imp.admin_name ?? '');
+        requestHeaders.set('x-impersonating-admin-email', imp.admin_email ?? '');
+      }
+    }
+  }
 
   return NextResponse.next({ request: { headers: requestHeaders } });
 }

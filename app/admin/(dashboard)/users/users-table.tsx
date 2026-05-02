@@ -17,6 +17,7 @@ interface User {
   created_at: string;
   orders_count: number;
   total_spent: string;
+  customer_number: string | null;
 }
 
 interface UsersTableProps {
@@ -117,6 +118,18 @@ export function UsersTable({ users, permissions }: UsersTableProps) {
           </div>
         </div>
       ),
+    },
+    {
+      key: 'customer_number',
+      header: 'Customer #',
+      render: (user) =>
+        user.customer_number ? (
+          <span className="font-mono text-sm font-medium text-slate-700">
+            {user.customer_number}
+          </span>
+        ) : (
+          <span className="text-xs text-slate-400">—</span>
+        ),
     },
     {
       key: 'email_verified',

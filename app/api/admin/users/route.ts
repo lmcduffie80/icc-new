@@ -15,6 +15,7 @@ interface User {
   updated_at: string;
   orders_count?: number;
   total_spent?: string;
+  customer_number?: string | null;
 }
 
 // GET /api/admin/users - List all users
@@ -28,21 +29,23 @@ export async function GET(request: NextRequest) {
   let sql = `
     SELECT 
       u.*,
+      up.customer_number,
       COUNT(DISTINCT CASE WHEN o.status != 'cancelled' THEN o.id END)::int as orders_count,
       COALESCE(SUM(CASE WHEN o.status != 'cancelled' THEN o.total ELSE 0 END), 0) as total_spent
     FROM "user" u
+    LEFT JOIN user_profiles up ON up.user_id = u.id
     LEFT JOIN orders o ON o.user_id = u.id AND o.status != 'cancelled'
   `;
   const params: unknown[] = [];
   let paramIndex = 1;
 
   if (search) {
-    sql += ` WHERE (u.email ILIKE $${paramIndex} OR u.name ILIKE $${paramIndex})`;
+    sql += ` WHERE (u.email ILIKE $${paramIndex} OR u.name ILIKE $${paramIndex} OR up.customer_number ILIKE $${paramIndex})`;
     params.push(`%${search}%`);
     paramIndex++;
   }
 
-  sql += ' GROUP BY u.id ORDER BY u.created_at DESC';
+  sql += ' GROUP BY u.id, up.customer_number ORDER BY u."createdAt" DESC';
 
   const users = await query<User>(sql, params);
   return NextResponse.json(users);

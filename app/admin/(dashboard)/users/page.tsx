@@ -12,6 +12,7 @@ interface User {
   created_at: string;
   orders_count: number;
   total_spent: string;
+  customer_number: string | null;
 }
 
 async function getUsers(): Promise<User[]> {
@@ -23,11 +24,13 @@ async function getUsers(): Promise<User[]> {
       u.image,
       u."emailVerified" as email_verified,
       u."createdAt" as created_at,
+      up.customer_number,
       COUNT(DISTINCT CASE WHEN o.status != 'cancelled' THEN o.id END)::int as orders_count,
       COALESCE(SUM(CASE WHEN o.status != 'cancelled' THEN o.total ELSE 0 END), 0) as total_spent
     FROM "user" u
+    LEFT JOIN user_profiles up ON up.user_id = u.id
     LEFT JOIN orders o ON o.user_id = u.id AND o.status != 'cancelled'
-    GROUP BY u.id, u.email, u.name, u.image, u."emailVerified", u."createdAt"
+    GROUP BY u.id, u.email, u.name, u.image, u."emailVerified", u."createdAt", up.customer_number
     ORDER BY u."createdAt" DESC`
   );
 }

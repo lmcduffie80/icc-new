@@ -4,6 +4,7 @@ import { CompareBadge } from '@/components/compare-badge';
 import { CookieBanner } from '@/components/cookie-banner';
 import { headers } from 'next/headers';
 import { PastDueBanner } from '@/components/past-due-banner';
+import { ImpersonationBanner } from '@/components/impersonation-banner';
 import { auth } from '@/lib/auth';
 import { redirect } from 'next/navigation';
 
@@ -29,9 +30,14 @@ export default async function MainLayout({
   const isPastDue = allHeaders.get('x-past-due') === '1';
   const mfaRequired = allHeaders.get('x-mfa-required') === '1';
 
-  // MFA enrollment gate: if tenant requires MFA and the authenticated user
-  // hasn't enabled it yet, redirect them to the setup page.
-  if (mfaRequired) {
+  // Impersonation context (set by middleware when admin_impersonation_token cookie is present)
+  const impersonatingUserId = allHeaders.get('x-impersonating-user-id');
+  const impersonatingUserName = allHeaders.get('x-impersonating-user-name');
+  const impersonatingAdminName = allHeaders.get('x-impersonating-admin-name');
+  const isImpersonating = !!impersonatingUserId;
+
+  // MFA enrollment gate: skip when impersonating (admin already authenticated)
+  if (mfaRequired && !isImpersonating) {
     const pathname = allHeaders.get('x-invoke-path') ?? '';
     const isExempt = MFA_GATE_EXEMPT_SUFFIXES.some((s) => pathname.endsWith(s));
 
@@ -45,6 +51,12 @@ export default async function MainLayout({
 
   return (
     <div className="relative flex min-h-screen flex-col">
+      {isImpersonating && (
+        <ImpersonationBanner
+          adminName={impersonatingAdminName ?? 'Admin'}
+          targetUserName={impersonatingUserName ?? 'Customer'}
+        />
+      )}
       {isPastDue && <PastDueBanner tenantSlug={slug} />}
       <Header />
       <main className="flex-1">{children}</main>
