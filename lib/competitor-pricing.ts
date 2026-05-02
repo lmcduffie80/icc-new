@@ -77,10 +77,37 @@ const listingSchema = z.object({
   imageUrl: z.string().url().nullable().optional(),
 });
 
+// The response schema is intentionally lenient on `listings`. We parse each
+// element individually and filter out failures (e.g. listings the agent
+// returned with `price: null` for out-of-stock products) — losing one bad
+// row should not throw away the rest of a valid batch. Without this, a
+// single "Out of stock" listing torpedoes the whole refresh for that
+// (competitor, ingredient, packaging) tuple.
 const responseSchema = z.object({
-  listings: z.array(listingSchema),
+  listings: z.array(z.unknown()),
   notes: z.string().optional(),
 });
+
+interface ParsedListings {
+  /** Listings that passed individual validation. */
+  ok: z.infer<typeof listingSchema>[];
+  /** Number of listings the agent returned that we discarded. */
+  rejected: number;
+}
+
+function parseListings(rawListings: unknown[]): ParsedListings {
+  const ok: z.infer<typeof listingSchema>[] = [];
+  let rejected = 0;
+  for (const raw of rawListings) {
+    const result = listingSchema.safeParse(raw);
+    if (result.success) {
+      ok.push(result.data);
+    } else {
+      rejected++;
+    }
+  }
+  return { ok, rejected };
+}
 
 const AGENT_SYSTEM_PROMPT = `You are a pricing research assistant for an agricultural chemicals retailer.
 
@@ -89,15 +116,15 @@ Your task: given an active ingredient (and optionally a target packaging size), 
 Rules:
 1. ONLY return products from the requested retailer scope. If the user provides a competitor site, listings MUST be hosted on that site. If the user opens up the search to the open web, return listings from any legitimate retailer but capture the full direct product page URL.
 2. ONLY return products where you can verify the active ingredient and concentration from the product page.
-3. ONLY return a price if you see it explicitly on the product page. Never estimate or guess.
+3. CRITICAL: A product must have a verifiable, currently-listed price to be included. If a product page shows "Out of stock", "Call for price", "Request a quote", or has no visible price, OMIT it entirely from the listings array — do NOT include it with null/0/missing price. A listing with no price is worse than no listing.
 4. The sourceUrl MUST be the direct product page URL, not a search results page.
 5. When a target packaging size is provided (e.g. "2.5 gal"), ONLY return listings that match that packaging within roughly 5% — exclude bulk drums, totes, cases, and unrelated sizes.
 6. Return between 0 and 3 listings — pick the best matches, not exhaustive results.
-7. If no matching products are found, return an empty array.
-8. Prices must be in USD as a plain number (e.g. 149.99), with no currency symbols.
+7. If no matching products with verifiable prices are found, return an empty listings array (with an optional "notes" string explaining why).
+8. Prices must be in USD as a plain positive number (e.g. 149.99), with no currency symbols. Never use null, 0, or strings.
 9. Units must be normalized to one of: "gal", "qt", "pt", "fl oz", "lb", "oz", "each", "case".
 10. Always populate containerSize when known (e.g. "2.5 gal", "30 gal", "1 qt", "50 lb"). Leave null only if the page genuinely does not state the size.
-11. Always populate imageUrl with a direct URL to the primary product image on the product page (typically the hero/main product photo). Use the absolute URL — not a thumbnail, not a base64 data URI, not a relative path. Use null only if the page truly has no product image you can extract.`;
+11. Populate imageUrl with a direct, absolute URL to the primary product image when one is visible on the listing page (typically the hero/main product photo, an og:image tag, or a CDN image like Shopify's cdn.shopify.com or images.amazon.com). Avoid base64 data URIs, thumbnails, and relative paths. Use null only when the page truly has no extractable product image — do not omit the field.`;
 
 /**
  * Model used for competitor pricing research. Plain `provider/model` strings
@@ -199,18 +226,21 @@ Return ONLY the JSON object, no prose.`;
     if (!validated.success) {
       return {
         status: 'failed',
-        reason: `Agent response failed schema validation: ${validated.error.message}`,
+        reason: `Agent response failed top-level schema validation: ${validated.error.message}`,
       };
     }
 
-    if (validated.data.listings.length === 0) {
-      return {
-        status: 'not_found',
-        reason: validated.data.notes ?? 'No matching listings found',
-      };
+    const { ok: validListings, rejected } = parseListings(validated.data.listings);
+
+    if (validListings.length === 0) {
+      const notes = validated.data.notes ?? 'No matching listings found';
+      const reason = rejected > 0
+        ? `${notes} (${rejected} listing(s) returned but rejected — usually missing price)`
+        : notes;
+      return { status: 'not_found', reason };
     }
 
-    const listings: CompetitorListing[] = validated.data.listings.map((l) => {
+    const listings: CompetitorListing[] = validListings.map((l) => {
       const containerSize = l.containerSize ?? null;
       const unitOfMeasure = l.unitOfMeasure ?? null;
       return {

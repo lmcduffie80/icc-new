@@ -25,6 +25,7 @@ import {
   type ParsedIngredient,
   type ParsedPackaging,
 } from './competitor-match';
+import { fetchOgImage } from './competitor-image';
 import {
   fetchCompetitorListings,
   type CompetitorInfo,
@@ -139,6 +140,18 @@ async function upsertListing(
   // parseable size.
   const effectivePackaging = listing.packaging ?? packaging;
 
+  // The Claude web-search agent only returns image URLs that are inline in
+  // the search snippet text it sees, which is rarely a usable product
+  // image. As a fallback, fetch the source page directly and pull the
+  // og:image / twitter:image meta tag — almost every modern e-commerce
+  // template emits one. Best-effort: failures (timeouts, blocked bots,
+  // non-HTML responses) leave imageUrl as null so the UI shows its
+  // placeholder instead.
+  let imageUrl = listing.imageUrl;
+  if (!imageUrl && listing.sourceUrl) {
+    imageUrl = await fetchOgImage(listing.sourceUrl);
+  }
+
   await query(
     `INSERT INTO competitor_products (
        competitor_id, product_name, normalized_active_ingredient,
@@ -185,7 +198,7 @@ async function upsertListing(
       effectivePackaging?.sizeValue ?? null,
       effectivePackaging?.sizeUnit ?? null,
       listing.retailerName,
-      listing.imageUrl,
+      imageUrl,
     ]
   );
 }
