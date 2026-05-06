@@ -12,7 +12,7 @@ import { useCartStore } from '@/lib/cart-store';
 import { useCompareStore } from '@/lib/compare-store';
 import { isProductEligibleForState } from '@/lib/state-eligibility';
 import { useAuth } from '@/components/auth-provider';
-import { CompetitorPricingPanel } from '@/components/competitor-pricing-panel';
+import { CompetitorPricingBanner } from '@/components/competitor-pricing-banner';
 import type { ProductDetailView, SimilarProduct } from '@/lib/products';
 import { formatPrice, formatAvailabilityDate } from '@/lib/utils';
 import { getImageProxyUrl } from '@/lib/image-proxy';
@@ -218,6 +218,9 @@ export function ProductDetailContent({
 
   return (
     <div className="flex flex-col">
+      {/* Competitor pricing ticker — runs full-width directly below the site header */}
+      <CompetitorPricingBanner productId={product.id} />
+
       {/* Product Detail Section */}
       <section className="py-12">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
@@ -419,7 +422,6 @@ export function ProductDetailContent({
                     )}
                   </div>
 
-                  <CompetitorPricingPanel productId={product.id} />
                 </CardContent>
               </Card>
             </div>
