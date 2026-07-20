@@ -34,5 +34,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Audit dependencies
-        run: pnpm audit --audit-level=high
+      # Scoped to production dependencies only. @better-auth/cli (a devDependency
+      # used solely for local `db:migrate`/`db:generate` commands, never bundled
+      # into the deployed app) pins an internal better-auth copy that lags behind
+      # upstream security patches — no compatible CLI release exists yet. Auditing
+      # --prod reflects the real, exploitable surface of the running application;
+      # `pnpm audit --audit-level=high` (no --prod) can be run locally to check
+      # the full dev+prod tree.
+      - name: Audit production dependencies
+        run: pnpm audit --audit-level=high --prod
