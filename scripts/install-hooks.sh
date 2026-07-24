@@ -6,7 +6,9 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 HOOKS_SRC="$REPO_ROOT/.githooks"
-HOOKS_DST="$REPO_ROOT/.git/hooks"
+# Use `git rev-parse --git-path hooks` instead of a hardcoded "$REPO_ROOT/.git/hooks"
+# so this also works inside a git worktree, where .git is a file, not a directory.
+HOOKS_DST="$(git -C "$REPO_ROOT" rev-parse --git-path hooks)"
 
 if [ ! -d "$HOOKS_SRC" ]; then
   echo "No .githooks directory found at $HOOKS_SRC — nothing to install."
