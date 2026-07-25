@@ -78,6 +78,28 @@ vi.mock('@/components/minicart', () => ({
 // Import components after mocks
 import { Header } from '@/components/header';
 import { Footer } from '@/components/footer';
+import { TenantProvider } from '@/components/tenant-provider';
+import type { Tenant } from '@/lib/tenant';
+
+const mockTenant: Tenant = {
+  id: 'tenant-test',
+  slug: 'test',
+  name: 'Test Tenant',
+  logoUrl: null,
+  primaryColor: '#16a34a',
+  country: 'US',
+  currency: 'USD',
+  planId: null,
+  billingType: 'manual',
+  stripeCustomerId: null,
+  stripeSubscriptionId: null,
+  subscriptionStatus: 'active',
+  trialEndsAt: null,
+  billingCycle: null,
+  isActive: true,
+  mfaRequired: false,
+  plan: null,
+};
 
 // Mock fetch for Footer categories
 beforeEach(() => {
@@ -148,7 +170,11 @@ describe('Navigation Accessibility (WCAG 2.1 AA)', () => {
 
   describe('Footer Component', () => {
     it('should have no accessibility violations', async () => {
-      const { container } = render(<Footer />);
+      const { container } = render(
+        <TenantProvider tenant={mockTenant}>
+          <Footer />
+        </TenantProvider>
+      );
 
       // Wait for categories to load
       await vi.waitFor(() => {
@@ -160,14 +186,22 @@ describe('Navigation Accessibility (WCAG 2.1 AA)', () => {
     });
 
     it('should have accessible footer landmark', () => {
-      const { container } = render(<Footer />);
+      const { container } = render(
+        <TenantProvider tenant={mockTenant}>
+          <Footer />
+        </TenantProvider>
+      );
 
       const footer = container.querySelector('footer');
       expect(footer).toBeTruthy();
     });
 
     it('should have accessible section headings', async () => {
-      const { container } = render(<Footer />);
+      const { container } = render(
+        <TenantProvider tenant={mockTenant}>
+          <Footer />
+        </TenantProvider>
+      );
 
       // Wait for categories to load
       await vi.waitFor(() => {
@@ -183,7 +217,11 @@ describe('Navigation Accessibility (WCAG 2.1 AA)', () => {
     });
 
     it('should have accessible links with clear text', async () => {
-      const { container } = render(<Footer />);
+      const { container } = render(
+        <TenantProvider tenant={mockTenant}>
+          <Footer />
+        </TenantProvider>
+      );
 
       // Wait for categories to load
       await vi.waitFor(() => {

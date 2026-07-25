@@ -2,14 +2,16 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useTenant } from '@/components/tenant-provider';
 
 export function Footer() {
+  const tenant = useTenant();
   const [categories, setCategories] = useState<string[]>([]);
 
   useEffect(() => {
     async function fetchCategories() {
       try {
-        const response = await fetch('/api/categories');
+        const response = await fetch(`/api/categories?tenant_id=${tenant.id}`);
         if (response.ok) {
           const data = await response.json();
           setCategories(data.categories || []);
@@ -19,7 +21,7 @@ export function Footer() {
       }
     }
     fetchCategories();
-  }, []);
+  }, [tenant.id]);
 
   return (
     <footer className="border-t border-border/40 bg-muted/30">

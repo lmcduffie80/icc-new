@@ -10,6 +10,7 @@ import { loadStripe } from '@stripe/stripe-js';
 
 import { useCartStore } from '@/lib/cart-store';
 import { useAuth } from '@/components/auth-provider';
+import { useTenant } from '@/components/tenant-provider';
 import { formatPrice } from '@/lib/utils';
 import { getPhoneDigits } from '@/components/ui/phone-input';
 import { PriceWithUnit } from '@/components/ui/price-with-unit';
@@ -144,6 +145,7 @@ function LabelImageThumbnail({
 
 // Component to fetch and display product label link
 function ProductLabelLink({ productId, fallbackUrl }: { productId: string; fallbackUrl?: string }) {
+  const tenant = useTenant();
   // Initialize with fallback URL if provided, but convert S3 URLs to proxy URLs
   const getInitialLabelUrl = () => {
     if (!fallbackUrl) return null;
@@ -215,7 +217,7 @@ function ProductLabelLink({ productId, fallbackUrl }: { productId: string; fallb
           setLoading(true);
         }
         setError(null);
-        const response = await fetch(`/api/products/${productId}`);
+        const response = await fetch(`/api/products/${productId}?tenant_id=${tenant.id}`);
         if (!response.ok) {
           throw new Error(`Failed to fetch product: ${response.status}`);
         }
@@ -302,7 +304,7 @@ function ProductLabelLink({ productId, fallbackUrl }: { productId: string; fallb
       }
     }
     fetchLabel();
-  }, [productId, fallbackUrl]);
+  }, [productId, fallbackUrl, tenant.id]);
 
   // Determine the display URL - prefer labelUrl, then originalUrl, then fallbackUrl
   // But always convert S3 URLs to proxy URLs before using
@@ -447,6 +449,7 @@ function ProductLabelLink({ productId, fallbackUrl }: { productId: string; fallb
 
 export default function CheckoutPage() {
   const router = useRouter();
+  const tenant = useTenant();
   const { items, getSubtotal, clearCart, updateQuantity, refreshMetadata } = useCartStore();
   const { user, isPending: isAuthPending } = useAuth();
 
@@ -749,7 +752,7 @@ export default function CheckoutPage() {
       await Promise.all(
         items.map(async (item) => {
           try {
-            const res = await fetch(`/api/products/${item.id}`);
+            const res = await fetch(`/api/products/${item.id}?tenant_id=${tenant.id}`);
             if (!res.ok) return;
             const p = await res.json();
             updates[item.id] = {
