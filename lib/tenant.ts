@@ -1,5 +1,6 @@
 import { queryOne } from './db';
 import { cache } from 'react';
+import type { NextRequest } from 'next/server';
 
 export interface Plan {
   id: string;
@@ -165,4 +166,31 @@ export function tenantHasAccess(tenant: Tenant): boolean {
     return new Date(trialEndsAt) > new Date();
   }
   return true;
+}
+
+/** Thrown by getRequiredTenantId when a request carries no resolvable tenant. */
+export class MissingTenantError extends Error {
+  constructor() {
+    super('Request did not include a resolvable tenant');
+    this.name = 'MissingTenantError';
+  }
+}
+
+/**
+ * Resolve the tenant id for an API route.
+ *
+ * Path-scoped page routes get `x-tenant-id` injected by middleware. Routes
+ * called same-origin without a tenant path segment (e.g. `fetch('/api/products')`
+ * from a client component) must pass `?tenant_id=` explicitly — client code
+ * should source that value from `useTenant().id` (components/tenant-provider.tsx).
+ * Throws MissingTenantError when neither is present so callers can return a 400.
+ */
+export function getRequiredTenantId(request: NextRequest): string {
+  const fromHeader = request.headers.get('x-tenant-id');
+  if (fromHeader) return fromHeader;
+
+  const fromQuery = request.nextUrl.searchParams.get('tenant_id');
+  if (fromQuery) return fromQuery;
+
+  throw new MissingTenantError();
 }
