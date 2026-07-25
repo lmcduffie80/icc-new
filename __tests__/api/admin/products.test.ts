@@ -274,6 +274,44 @@ describe('POST /api/admin/products', () => {
       expect(response.status).toBe(201);
       expect(data.name).toBe('Minimal Product');
     });
+
+    it('should stamp tenant_id on the INSERT, defaulting to tenant_icc_default when no tenant is resolvable', async () => {
+      const mockSession = {
+        session: { userId: 'admin-user-1' },
+        adminUser: { id: 'admin-1', permissions: ['products.create'] },
+      };
+
+      mockRequireAdmin.mockResolvedValue({ error: null, session: mockSession });
+
+      const mockProduct = {
+        id: 'prod-4',
+        name: 'Tenant Stamped Product',
+        category: 'herbicides',
+        price: '29.99',
+      };
+
+      mockQuery.mockResolvedValue([]); // no duplicate SKU
+      mockQueryOne.mockResolvedValue(mockProduct);
+      mockLogAction.mockResolvedValue(undefined);
+
+      const requestBody = {
+        name: 'Tenant Stamped Product',
+        category: 'herbicides',
+        supplier_id: 'supplier-123',
+        sku: 'HERB-999',
+        price: 29.99,
+      };
+
+      // No x-tenant-id header and no ?tenant_id= — /admin isn't tenant-scoped yet.
+      const request = createPostRequest('/api/admin/products', requestBody);
+      const response = await POST(request);
+
+      expect(response.status).toBe(201);
+      const [sql, params] = mockQueryOne.mock.calls[0];
+      expect(sql).toContain('INSERT INTO products');
+      expect(sql).toMatch(/\(\s*tenant_id,/);
+      expect(params[0]).toBe('tenant_icc_default');
+    });
   });
 
   describe('validation', () => {

@@ -2,6 +2,21 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/admin-auth';
 import { query, queryOne } from '@/lib/db';
 import { logAction } from '@/lib/audit';
+import { getRequiredTenantId, MissingTenantError } from '@/lib/tenant';
+
+// The /admin panel isn't tenant-scoped in routing yet (see BYPASS_PREFIXES in
+// middleware.ts and "What's still open after this plan" in
+// docs/superpowers/specs/2026-07-24-agrovus-ecommerce-multitenant-design.md),
+// so requests here never carry x-tenant-id/tenant_id. Fall back to the ICC
+// tenant until a real tenant-scoped admin UI exists.
+function resolveTenantIdForAdminWrite(request: NextRequest): string {
+  try {
+    return getRequiredTenantId(request);
+  } catch (err) {
+    if (err instanceof MissingTenantError) return 'tenant_icc_default';
+    throw err;
+  }
+}
 
 interface ProductAttributes {
   activeIngredients: string;
@@ -161,17 +176,21 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const tenantId = resolveTenantIdForAdminWrite(request);
+
     const product = await queryOne<Product>(
       `INSERT INTO products (
+        tenant_id,
         name, category, description, full_description, sku, price, original_price, msrp,
         unit_of_measure, image, in_stock, inventory_count, rating, review_count, minimum_order_qty,
         next_available_quantity, next_available_date,
         attributes, approved_states, features, specifications, documents, sds_url, restricted_use,
         supplier_id, approval_status, compared_to
       )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28)
        RETURNING *`,
       [
+        tenantId,
         name,
         category,
         description || null,
