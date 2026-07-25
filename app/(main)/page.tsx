@@ -4,6 +4,7 @@ import { ServicesSection } from '@/components/services-section';
 import { WhyChooseUsSection } from '@/components/why-choose-us-section';
 import { TestimonialsSection } from '@/components/testimonials-section';
 import { CtaSection } from '@/components/cta-section';
+import { CommodityTickerBanner } from '@/components/commodity-ticker-banner';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
@@ -14,6 +15,8 @@ export const metadata: Metadata = {
 export default function Home() {
   return (
     <div className="flex flex-col">
+      {/* Live commodity + fertilizer market ticker */}
+      <CommodityTickerBanner />
       <HeroSection />
       <StatsSection />
       <ServicesSection />
