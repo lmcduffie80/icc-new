@@ -99,6 +99,12 @@ const mockTenant: Tenant = {
   isActive: true,
   mfaRequired: false,
   plan: null,
+  paymentsMode: 'own_stripe',
+  stripeConnectAccountId: null,
+  commissionBps: 0,
+  stripeConnectChargesEnabled: false,
+  stripeConnectPayoutsEnabled: false,
+  stripeConnectDetailsSubmitted: false,
 };
 
 // Mock fetch for Footer categories

@@ -29,6 +29,12 @@ export interface Tenant {
   isActive: boolean;
   mfaRequired: boolean;
   plan: Plan | null;
+  paymentsMode: 'own_stripe' | 'icc_managed';
+  stripeConnectAccountId: string | null;
+  commissionBps: number;
+  stripeConnectChargesEnabled: boolean;
+  stripeConnectPayoutsEnabled: boolean;
+  stripeConnectDetailsSubmitted: boolean;
 }
 
 interface DbTenant {
@@ -48,6 +54,12 @@ interface DbTenant {
   billing_cycle: string | null;
   is_active: boolean;
   mfa_required: boolean;
+  payments_mode: 'own_stripe' | 'icc_managed';
+  stripe_connect_account_id: string | null;
+  commission_bps: number;
+  stripe_connect_charges_enabled: boolean;
+  stripe_connect_payouts_enabled: boolean;
+  stripe_connect_details_submitted: boolean;
   plan_name: string | null;
   plan_display_name: string | null;
   plan_price_monthly_usd: string | null;
@@ -62,6 +74,9 @@ const TENANT_SELECT = `
     t.stripe_customer_id, t.stripe_subscription_id,
     t.subscription_status, t.trial_ends_at, t.billing_cycle,
     t.is_active, t.mfa_required,
+    t.payments_mode, t.stripe_connect_account_id, t.commission_bps,
+    t.stripe_connect_charges_enabled, t.stripe_connect_payouts_enabled,
+    t.stripe_connect_details_submitted,
     p.name          AS plan_name,
     p.display_name  AS plan_display_name,
     p.price_monthly_usd AS plan_price_monthly_usd,
@@ -89,6 +104,12 @@ function mapTenant(row: DbTenant): Tenant {
     billingCycle: row.billing_cycle,
     isActive: row.is_active,
     mfaRequired: row.mfa_required ?? false,
+    paymentsMode: row.payments_mode,
+    stripeConnectAccountId: row.stripe_connect_account_id,
+    commissionBps: row.commission_bps,
+    stripeConnectChargesEnabled: row.stripe_connect_charges_enabled,
+    stripeConnectPayoutsEnabled: row.stripe_connect_payouts_enabled,
+    stripeConnectDetailsSubmitted: row.stripe_connect_details_submitted,
     plan: row.plan_name
       ? {
           id: row.plan_id!,
