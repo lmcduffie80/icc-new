@@ -1,19 +1,76 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { GET } from '@/app/api/products/route';
-import { createGetRequest, parseJsonResponse } from './helpers/request-helpers';
+import { createMockRequest, parseJsonResponse } from './helpers/request-helpers';
 
-// Mock the database with vi.hoisted
-const { mockQuery } = vi.hoisted(() => ({
+const { mockQuery, mockCheckRateLimit, mockCreateRateLimitResponse } = vi.hoisted(() => ({
   mockQuery: vi.fn(),
+  mockCheckRateLimit: vi.fn().mockResolvedValue({ success: true }),
+  mockCreateRateLimitResponse: vi.fn(
+    (reset?: number) =>
+      new Response(JSON.stringify({ error: 'Too many requests' }), {
+        status: 429,
+        headers: { 'Retry-After': String(reset ?? 60) },
+      })
+  ),
 }));
 
 vi.mock('@/lib/db', () => ({
   query: mockQuery,
+  queryOne: vi.fn(),
+  pool: {},
 }));
+
+vi.mock('@/lib/rate-limit', () => ({
+  rateLimiters: { relaxed: {} },
+  checkRateLimit: mockCheckRateLimit,
+  createRateLimitResponse: mockCreateRateLimitResponse,
+  getClientIp: vi.fn().mockReturnValue('127.0.0.1'),
+}));
+
+vi.mock('@/lib/security-logger', () => ({
+  securityLogger: { logRateLimitExceeded: vi.fn(), logValidationFailure: vi.fn(), logEvent: vi.fn() },
+}));
+
+// A valid tenant is required for most tests below since the route now
+// resolves the tenant before doing anything else.
+const TENANT_QUERY = { searchParams: { tenant_id: 'tenant-abc' } };
 
 describe('GET /api/products', () => {
   beforeEach(() => {
     mockQuery.mockReset();
+    mockCheckRateLimit.mockReset();
+    mockCheckRateLimit.mockResolvedValue({ success: true });
+    mockCreateRateLimitResponse.mockClear();
+  });
+
+  describe('tenant scoping', () => {
+    it('returns 400 when no tenant can be resolved', async () => {
+      mockQuery.mockResolvedValue([]);
+      const request = createMockRequest('/api/products');
+      const response = await GET(request);
+      expect(response.status).toBe(400);
+    });
+
+    it('filters by tenant_id from the query param', async () => {
+      mockQuery.mockResolvedValue([{ id: '1', name: 'Widget' }]);
+      const request = createMockRequest('/api/products', { searchParams: { tenant_id: 'tenant-abc' } });
+      const response = await GET(request);
+      const data = await parseJsonResponse(response);
+
+      expect(response.status).toBe(200);
+      expect(data).toEqual([{ id: '1', name: 'Widget' }]);
+      const [sql, params] = mockQuery.mock.calls[0];
+      expect(sql).toContain('tenant_id = $1');
+      expect(params[0]).toBe('tenant-abc');
+    });
+
+    it('filters by tenant_id from the x-tenant-id header when present', async () => {
+      mockQuery.mockResolvedValue([]);
+      const request = createMockRequest('/api/products', { headers: { 'x-tenant-id': 'tenant-xyz' } });
+      await GET(request);
+      const [, params] = mockQuery.mock.calls[0];
+      expect(params[0]).toBe('tenant-xyz');
+    });
   });
 
   describe('list all products', () => {
@@ -43,7 +100,7 @@ describe('GET /api/products', () => {
 
       mockQuery.mockResolvedValue(mockProducts);
 
-      const request = createGetRequest('/api/products');
+      const request = createMockRequest('/api/products', TENANT_QUERY);
       const response = await GET(request);
       const data = await parseJsonResponse(response);
 
@@ -55,7 +112,7 @@ describe('GET /api/products', () => {
     it('should return empty array when no products exist', async () => {
       mockQuery.mockResolvedValue([]);
 
-      const request = createGetRequest('/api/products');
+      const request = createMockRequest('/api/products', TENANT_QUERY);
       const response = await GET(request);
       const data = await parseJsonResponse(response);
 
@@ -82,13 +139,17 @@ describe('GET /api/products', () => {
 
       mockQuery.mockResolvedValue(mockProducts);
 
-      const request = createGetRequest('/api/products', { category: 'herbicides' });
+      const request = createMockRequest('/api/products', {
+        searchParams: { tenant_id: 'tenant-abc', category: 'herbicides' },
+      });
       const response = await GET(request);
       const data = await parseJsonResponse(response);
 
       expect(response.status).toBe(200);
       expect(data).toEqual(mockProducts);
       expect(data.every((p: { category: string }) => p.category === 'herbicides')).toBe(true);
+      const [sql] = mockQuery.mock.calls[0];
+      expect(sql).toContain('LOWER(category) = LOWER(');
     });
 
     it('should not filter when category is "all"', async () => {
@@ -117,22 +178,31 @@ describe('GET /api/products', () => {
 
       mockQuery.mockResolvedValue(mockProducts);
 
-      const request = createGetRequest('/api/products', { category: 'all' });
+      const request = createMockRequest('/api/products', {
+        searchParams: { tenant_id: 'tenant-abc', category: 'all' },
+      });
       const response = await GET(request);
       const data = await parseJsonResponse(response);
 
       expect(response.status).toBe(200);
       expect(data).toHaveLength(2);
+      const [sql] = mockQuery.mock.calls[0];
+      expect(sql).not.toContain('LOWER(category)');
     });
 
     it('should handle case-insensitive category filtering', async () => {
       mockQuery.mockResolvedValue([]);
 
-      const request = createGetRequest('/api/products', { category: 'HERBICIDES' });
+      const request = createMockRequest('/api/products', {
+        searchParams: { tenant_id: 'tenant-abc', category: 'HERBICIDES' },
+      });
       const response = await GET(request);
 
       expect(response.status).toBe(200);
       // The SQL query should use LOWER() for case-insensitive comparison
+      const [sql, params] = mockQuery.mock.calls[0];
+      expect(sql).toContain('LOWER(category) = LOWER(');
+      expect(params).toContain('HERBICIDES');
     });
   });
 
@@ -153,7 +223,9 @@ describe('GET /api/products', () => {
 
       mockQuery.mockResolvedValue(mockProducts);
 
-      const request = createGetRequest('/api/products', { search: 'Premium' });
+      const request = createMockRequest('/api/products', {
+        searchParams: { tenant_id: 'tenant-abc', search: 'Premium' },
+      });
       const response = await GET(request);
       const data = await parseJsonResponse(response);
 
@@ -177,7 +249,9 @@ describe('GET /api/products', () => {
 
       mockQuery.mockResolvedValue(mockProducts);
 
-      const request = createGetRequest('/api/products', { search: 'special' });
+      const request = createMockRequest('/api/products', {
+        searchParams: { tenant_id: 'tenant-abc', search: 'special' },
+      });
       const response = await GET(request);
       const data = await parseJsonResponse(response);
 
@@ -188,7 +262,9 @@ describe('GET /api/products', () => {
     it('should return empty array when search has no matches', async () => {
       mockQuery.mockResolvedValue([]);
 
-      const request = createGetRequest('/api/products', { search: 'nonexistent' });
+      const request = createMockRequest('/api/products', {
+        searchParams: { tenant_id: 'tenant-abc', search: 'nonexistent' },
+      });
       const response = await GET(request);
       const data = await parseJsonResponse(response);
 
@@ -199,10 +275,26 @@ describe('GET /api/products', () => {
     it('should handle search with special characters', async () => {
       mockQuery.mockResolvedValue([]);
 
-      const request = createGetRequest('/api/products', { search: '%special$' });
+      const request = createMockRequest('/api/products', {
+        searchParams: { tenant_id: 'tenant-abc', search: '%special$' },
+      });
       const response = await GET(request);
 
       expect(response.status).toBe(200);
+    });
+
+    it('should reject search queries longer than 100 characters', async () => {
+      mockQuery.mockResolvedValue([]);
+
+      const request = createMockRequest('/api/products', {
+        searchParams: { tenant_id: 'tenant-abc', search: 'a'.repeat(101) },
+      });
+      const response = await GET(request);
+      const data = await parseJsonResponse(response);
+
+      expect(response.status).toBe(400);
+      expect(data.error).toBe('Search query too long');
+      expect(mockQuery).not.toHaveBeenCalled();
     });
   });
 
@@ -223,9 +315,8 @@ describe('GET /api/products', () => {
 
       mockQuery.mockResolvedValue(mockProducts);
 
-      const request = createGetRequest('/api/products', {
-        category: 'herbicides',
-        search: 'Premium',
+      const request = createMockRequest('/api/products', {
+        searchParams: { tenant_id: 'tenant-abc', category: 'herbicides', search: 'Premium' },
       });
       const response = await GET(request);
       const data = await parseJsonResponse(response);
@@ -262,13 +353,38 @@ describe('GET /api/products', () => {
 
       mockQuery.mockResolvedValue(mockProducts);
 
-      const request = createGetRequest('/api/products');
+      const request = createMockRequest('/api/products', TENANT_QUERY);
       const response = await GET(request);
       const data = await parseJsonResponse(response);
 
       expect(response.status).toBe(200);
-      // In real scenario, data should be ordered with newer first
       expect(data).toEqual(mockProducts);
+      const [sql] = mockQuery.mock.calls[0];
+      expect(sql).toContain('ORDER BY created_at DESC');
+      expect(sql).toContain('LIMIT 100');
+    });
+  });
+
+  describe('rate limiting', () => {
+    it('should return 429 when the rate limit is exceeded', async () => {
+      mockCheckRateLimit.mockResolvedValue({ success: false, reset: Date.now() + 30000 });
+
+      const request = createMockRequest('/api/products', TENANT_QUERY);
+      const response = await GET(request);
+
+      expect(response.status).toBe(429);
+      expect(mockQuery).not.toHaveBeenCalled();
+    });
+
+    it('should proceed to query products when the rate limit check passes', async () => {
+      mockCheckRateLimit.mockResolvedValue({ success: true });
+      mockQuery.mockResolvedValue([]);
+
+      const request = createMockRequest('/api/products', TENANT_QUERY);
+      const response = await GET(request);
+
+      expect(response.status).toBe(200);
+      expect(mockQuery).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -276,7 +392,7 @@ describe('GET /api/products', () => {
     it('should return 500 error when database query fails', async () => {
       mockQuery.mockRejectedValue(new Error('Database connection failed'));
 
-      const request = createGetRequest('/api/products');
+      const request = createMockRequest('/api/products', TENANT_QUERY);
       const response = await GET(request);
       const data = await parseJsonResponse(response);
 
@@ -288,7 +404,7 @@ describe('GET /api/products', () => {
     it('should handle database timeout errors', async () => {
       mockQuery.mockRejectedValue(new Error('Query timeout'));
 
-      const request = createGetRequest('/api/products');
+      const request = createMockRequest('/api/products', TENANT_QUERY);
       const response = await GET(request);
 
       expect(response.status).toBe(500);
@@ -312,7 +428,7 @@ describe('GET /api/products', () => {
 
       mockQuery.mockResolvedValue(mockProducts);
 
-      const request = createGetRequest('/api/products');
+      const request = createMockRequest('/api/products', TENANT_QUERY);
       const response = await GET(request);
       const data = await parseJsonResponse(response);
 
@@ -341,7 +457,7 @@ describe('GET /api/products', () => {
 
       mockQuery.mockResolvedValue(mockProducts);
 
-      const request = createGetRequest('/api/products');
+      const request = createMockRequest('/api/products', TENANT_QUERY);
       const response = await GET(request);
       const data = await parseJsonResponse(response);
 
@@ -349,6 +465,14 @@ describe('GET /api/products', () => {
       expect(data[0].original_price).toBeNull();
       expect(data[0].image).toBeNull();
     });
+
+    it('should set caching headers on a successful response', async () => {
+      mockQuery.mockResolvedValue([]);
+
+      const request = createMockRequest('/api/products', TENANT_QUERY);
+      const response = await GET(request);
+
+      expect(response.headers.get('Cache-Control')).toContain('public');
+    });
   });
 });
-

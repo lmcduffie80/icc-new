@@ -1,8 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { GET } from '@/app/api/categories/route';
-import { parseJsonResponse } from './helpers/request-helpers';
+import { createMockRequest, parseJsonResponse } from './helpers/request-helpers';
 
-// Mock the database with vi.hoisted
 const { mockQueryOne } = vi.hoisted(() => ({
   mockQueryOne: vi.fn(),
 }));
@@ -21,9 +20,37 @@ const DEFAULT_CATEGORIES = [
   'Adjuvants',
 ];
 
+function requestForTenant(tenantId = 'tenant-abc') {
+  return createMockRequest('/api/categories', { searchParams: { tenant_id: tenantId } });
+}
+
 describe('GET /api/categories', () => {
   beforeEach(() => {
     mockQueryOne.mockReset();
+  });
+
+  describe('tenant scoping', () => {
+    it('returns default categories (not an error) when no tenant can be resolved', async () => {
+      const response = await GET(createMockRequest('/api/categories'));
+      const data = await parseJsonResponse(response);
+
+      expect(response.status).toBe(200);
+      expect(data.categories).toEqual(DEFAULT_CATEGORIES);
+      expect(mockQueryOne).not.toHaveBeenCalled();
+    });
+
+    it('scopes the settings lookup by tenant_id', async () => {
+      mockQueryOne.mockResolvedValue({
+        key: 'categories',
+        value: { categories: ['Custom Cat 1'] },
+      });
+
+      await GET(requestForTenant('tenant-abc'));
+
+      const [sql, params] = mockQueryOne.mock.calls[0];
+      expect(sql).toContain('tenant_id = $1');
+      expect(params).toEqual(['tenant-abc']);
+    });
   });
 
   describe('success cases', () => {
@@ -35,7 +62,7 @@ describe('GET /api/categories', () => {
         value: { categories: customCategories },
       });
 
-      const response = await GET();
+      const response = await GET(requestForTenant());
       const data = await parseJsonResponse(response);
 
       expect(response.status).toBe(200);
@@ -46,7 +73,7 @@ describe('GET /api/categories', () => {
     it('should return default categories when setting not found', async () => {
       mockQueryOne.mockResolvedValue(null);
 
-      const response = await GET();
+      const response = await GET(requestForTenant());
       const data = await parseJsonResponse(response);
 
       expect(response.status).toBe(200);
@@ -60,7 +87,7 @@ describe('GET /api/categories', () => {
         value: {},
       });
 
-      const response = await GET();
+      const response = await GET(requestForTenant());
       const data = await parseJsonResponse(response);
 
       expect(response.status).toBe(200);
@@ -73,7 +100,7 @@ describe('GET /api/categories', () => {
         value: { categories: null },
       });
 
-      const response = await GET();
+      const response = await GET(requestForTenant());
       const data = await parseJsonResponse(response);
 
       expect(response.status).toBe(200);
@@ -86,7 +113,7 @@ describe('GET /api/categories', () => {
         value: { categories: [] },
       });
 
-      const response = await GET();
+      const response = await GET(requestForTenant());
       const data = await parseJsonResponse(response);
 
       expect(response.status).toBe(200);
@@ -99,7 +126,7 @@ describe('GET /api/categories', () => {
     it('should return default categories when database query fails', async () => {
       mockQueryOne.mockRejectedValue(new Error('Database error'));
 
-      const response = await GET();
+      const response = await GET(requestForTenant());
       const data = await parseJsonResponse(response);
 
       // Should gracefully fall back to defaults instead of returning an error
@@ -111,7 +138,7 @@ describe('GET /api/categories', () => {
     it('should return default categories when database connection times out', async () => {
       mockQueryOne.mockRejectedValue(new Error('Connection timeout'));
 
-      const response = await GET();
+      const response = await GET(requestForTenant());
       const data = await parseJsonResponse(response);
 
       expect(response.status).toBe(200);
@@ -123,7 +150,7 @@ describe('GET /api/categories', () => {
     it('should have the correct default categories', async () => {
       mockQueryOne.mockResolvedValue(null);
 
-      const response = await GET();
+      const response = await GET(requestForTenant());
       const data = await parseJsonResponse(response);
 
       expect(data.categories).toContain('Herbicides');
@@ -140,7 +167,7 @@ describe('GET /api/categories', () => {
       mockQueryOne.mockResolvedValue(null);
 
       // The endpoint doesn't check for authentication
-      const response = await GET();
+      const response = await GET(requestForTenant());
 
       expect(response.status).toBe(200);
     });

@@ -1,34 +1,40 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Routes that bypass tenant resolution entirely
+// The path-based fallback tenant. Any request that isn't already scoped to
+// a real tenant slug redirects here (see DEFAULT_TENANT_SLUG below).
+const DEFAULT_TENANT_SLUG = 'icc';
+
+// Routes that resolve their own tenant context (headers/query param) instead
+// of via the URL's first path segment — see lib/tenant.ts#getRequiredTenantId.
+// All /api/* calls are same-origin fetches with no tenant prefix in their
+// path (e.g. fetch('/api/products')), so path-based slug resolution never
+// applies to them.
 const BYPASS_PREFIXES = [
   '/admin',
   '/supplier',
-  '/api/admin',
-  '/api/supplier',
-  '/api/auth',
-  '/api/webhooks',
-  '/api/internal',
+  '/api',
   '/_next',
   '/favicon.ico',
   '/robots.txt',
   '/sitemap.xml',
 ];
 
-// Known tenant-independent API routes
-const STATIC_API_PREFIXES = ['/api/categories', '/api/products'];
-
 // The impersonation "end" route must stay accessible from the portal
 const IMPERSONATION_COOKIE = 'admin_impersonation_token';
 
+// A path matches a bypass prefix only if it IS that prefix or is nested
+// under it (prefix + '/'). Plain `startsWith` would let a real tenant slug
+// like "apitools" or "administrator" collide with "/api" or "/admin".
+function isBypassPath(pathname: string): boolean {
+  return BYPASS_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const search = request.nextUrl.search;
 
   // Let bypass routes through immediately
-  if (BYPASS_PREFIXES.some((p) => pathname.startsWith(p))) {
-    return NextResponse.next();
-  }
-  if (STATIC_API_PREFIXES.some((p) => pathname.startsWith(p))) {
+  if (isBypassPath(pathname)) {
     return NextResponse.next();
   }
 
@@ -36,9 +42,9 @@ export async function middleware(request: NextRequest) {
   const segments = pathname.split('/').filter(Boolean);
   const slug = segments[0];
 
-  // Root path — no tenant in URL yet, let through (will show tenant selector or redirect)
+  // No tenant in the URL at all (e.g. bare "/") — send to the default tenant.
   if (!slug) {
-    return NextResponse.next();
+    return NextResponse.redirect(new URL(`/${DEFAULT_TENANT_SLUG}${search}`, request.url));
   }
 
   // Resolve tenant from DB via the lightweight internal API
@@ -48,18 +54,32 @@ export async function middleware(request: NextRequest) {
     new URL(`/api/internal/tenant/${slug}`, request.url),
     {
       headers: { 'x-internal-secret': process.env.INTERNAL_API_SECRET ?? '' },
-      // Short timeout — if DB is unavailable, let the request through anyway
     }
   ).catch(() => null);
 
+  // The default tenant is itself already the redirect target for unresolved
+  // slugs. If IT fails to resolve (DB outage, bad INTERNAL_API_SECRET, the
+  // row itself missing), redirecting again would produce an unbounded
+  // /icc/icc/icc/... loop for every visitor. Fall through instead, matching
+  // the old failure-tolerant behavior, but only for this specific case.
+  const isDefaultSlug = slug === DEFAULT_TENANT_SLUG;
+
   if (!tenantRes || !tenantRes.ok) {
-    // Slug not found as a tenant — pass through (could be a static route like /about)
-    return NextResponse.next();
+    if (isDefaultSlug) {
+      return NextResponse.next();
+    }
+    // First segment isn't a real tenant slug — this used to fall through to
+    // the legacy unscoped app/(main) route tree. That tree no longer exists,
+    // so redirect to the same path under the default tenant instead.
+    return NextResponse.redirect(new URL(`/${DEFAULT_TENANT_SLUG}${pathname}${search}`, request.url));
   }
 
   const tenant = await tenantRes.json().catch(() => null);
   if (!tenant) {
-    return NextResponse.next();
+    if (isDefaultSlug) {
+      return NextResponse.next();
+    }
+    return NextResponse.redirect(new URL(`/${DEFAULT_TENANT_SLUG}${pathname}${search}`, request.url));
   }
 
   // Subscription gate: canceled/unpaid → redirect to billing page

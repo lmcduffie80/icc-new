@@ -12,6 +12,7 @@ import { formatPrice, formatAvailabilityDate } from '@/lib/utils';
 import { getImageProxyUrl } from '@/lib/image-proxy';
 import { Loader2, ExternalLink } from 'lucide-react';
 import type { CompetitorPricingResponse } from '@/app/api/products/[id]/competitor-pricing/route';
+import { useTenant } from '@/components/tenant-provider';
 
 // Helper function to get document proxy URL (same as image proxy)
 const getDocumentUrl = (url: string | null | undefined): string | null => {
@@ -132,6 +133,7 @@ function StarRating({ rating, reviewCount }: { rating: number; reviewCount: numb
 }
 
 export default function ComparePage() {
+  const tenant = useTenant();
   const compareProducts = useCompareStore((state) => state.products);
   const removeProduct = useCompareStore((state) => state.removeProduct);
   const clearCompare = useCompareStore((state) => state.clearCompare);
@@ -164,7 +166,7 @@ export default function ComparePage() {
       setLoading(true);
       try {
         const productPromises = compareProducts.map(async (cp) => {
-          const response = await fetch(`/api/products/${cp.id}`);
+          const response = await fetch(`/api/products/${cp.id}?tenant_id=${tenant.id}`);
           if (response.ok) {
             return response.json();
           }
@@ -199,7 +201,7 @@ export default function ComparePage() {
     };
 
     fetchProducts();
-  }, [mounted, compareProducts]);
+  }, [mounted, compareProducts, tenant.id]);
 
   if (!mounted) {
     return null;

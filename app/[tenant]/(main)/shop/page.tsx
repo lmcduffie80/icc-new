@@ -10,8 +10,10 @@ import { PriceWithUnit } from '@/components/ui/price-with-unit';
 import { ProductImage } from '@/components/product-image';
 import type { Product } from '@/lib/products';
 import { formatPrice } from '@/lib/utils';
+import { useTenant } from '@/components/tenant-provider';
 
 function ShopContent() {
+  const tenant = useTenant();
   const searchParams = useSearchParams();
   const categoryParam = searchParams.get('category') || 'all';
 
@@ -31,7 +33,7 @@ function ShopContent() {
   useEffect(() => {
     async function fetchCategories() {
       try {
-        const response = await fetch('/api/categories');
+        const response = await fetch(`/api/categories?tenant_id=${tenant.id}`);
         if (response.ok) {
           const data = await response.json();
           setCategories(data.categories || []);
@@ -41,14 +43,14 @@ function ShopContent() {
       }
     }
     fetchCategories();
-  }, []);
+  }, [tenant.id]);
 
   // Fetch products from API
   useEffect(() => {
     async function fetchProducts() {
       try {
         setLoading(true);
-        const response = await fetch('/api/products');
+        const response = await fetch(`/api/products?tenant_id=${tenant.id}`);
         if (!response.ok) {
           throw new Error('Failed to fetch products');
         }
@@ -87,7 +89,7 @@ function ShopContent() {
       }
     }
     fetchProducts();
-  }, []);
+  }, [tenant.id]);
 
   // Function to clear all filters
   const clearFilters = () => {

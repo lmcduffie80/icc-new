@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { queryOne } from '@/lib/db';
 import { getDocumentProxyUrl } from '@/lib/s3';
+import { getRequiredTenantId, MissingTenantError } from '@/lib/tenant';
 
 export interface ProductDetail {
   id: string;
@@ -29,20 +30,31 @@ export interface ProductDetail {
   updated_at: string;
 }
 
-// GET /api/products/:id - Get single product with full details (public)
+// GET /api/products/:id - Get single product with full details, scoped to the caller's tenant (public)
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
 
+  let tenantId: string;
+  try {
+    tenantId = getRequiredTenantId(request);
+  } catch (err) {
+    if (err instanceof MissingTenantError) {
+      return NextResponse.json({ error: 'Missing tenant context' }, { status: 400 });
+    }
+    throw err;
+  }
+
   try {
     const product = await queryOne<ProductDetail>(
       `SELECT * FROM products 
        WHERE id = $1
+         AND tenant_id = $2
          AND deleted_at IS NULL
          AND (supplier_id IS NULL OR approval_status = 'published')`,
-      [id]
+      [id, tenantId]
     );
 
     if (!product) {

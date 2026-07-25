@@ -7,6 +7,7 @@ import { createPortal } from 'react-dom';
 import { lockScroll, unlockScroll } from '@/lib/scroll-lock';
 import { formatPrice } from '@/lib/utils';
 import { getImageProxyUrl } from '@/lib/image-proxy';
+import { useTenant } from '@/components/tenant-provider';
 
 interface SearchResult {
   id: string;
@@ -33,6 +34,7 @@ interface SearchOverlayProps {
 }
 
 export function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
+  const tenant = useTenant();
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [mounted, setMounted] = useState(false);
@@ -46,7 +48,7 @@ export function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
       startTransition(() => {
         setIsLoading(true);
       });
-      fetch('/api/products')
+      fetch(`/api/products?tenant_id=${tenant.id}`)
         .then((res) => res.json())
         .then((data) => {
           if (Array.isArray(data)) {
@@ -56,7 +58,7 @@ export function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
         .catch((err) => console.error('Failed to fetch products:', err))
         .finally(() => setIsLoading(false));
     }
-  }, [isOpen, products.length]);
+  }, [isOpen, products.length, tenant.id]);
 
   useEffect(() => {
     startTransition(() => {
