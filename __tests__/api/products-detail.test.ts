@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { GET } from '@/app/api/products/[id]/route';
-import { createGetRequest, parseJsonResponse } from './helpers/request-helpers';
+import { createMockRequest, createGetRequest, parseJsonResponse } from './helpers/request-helpers';
 
 // Mock the database with vi.hoisted
 const { mockQueryOne } = vi.hoisted(() => ({
@@ -8,12 +8,51 @@ const { mockQueryOne } = vi.hoisted(() => ({
 }));
 
 vi.mock('@/lib/db', () => ({
+  query: vi.fn(),
   queryOne: mockQueryOne,
+  pool: {},
 }));
+
+vi.mock('@/lib/s3', () => ({
+  getDocumentProxyUrl: (url: string | null) => url,
+}));
+
+// A valid tenant is required for most tests below since the route now
+// resolves the tenant before doing anything else.
+const TENANT_QUERY = { tenant_id: 'tenant-abc' };
 
 describe('GET /api/products/[id]', () => {
   beforeEach(() => {
     mockQueryOne.mockReset();
+  });
+
+  describe('tenant scoping', () => {
+    it('returns 400 when no tenant can be resolved', async () => {
+      const request = createMockRequest('/api/products/abc');
+      const response = await GET(request, { params: Promise.resolve({ id: 'abc' }) });
+      expect(response.status).toBe(400);
+      expect(mockQueryOne).not.toHaveBeenCalled();
+    });
+
+    it('scopes the lookup by tenant_id from the query param', async () => {
+      mockQueryOne.mockResolvedValue({ id: 'abc', name: 'Widget', documents: [] });
+      const request = createMockRequest('/api/products/abc', { searchParams: { tenant_id: 'tenant-abc' } });
+      const response = await GET(request, { params: Promise.resolve({ id: 'abc' }) });
+      const data = await parseJsonResponse(response);
+
+      expect(response.status).toBe(200);
+      expect(data.id).toBe('abc');
+      const [sql, params] = mockQueryOne.mock.calls[0];
+      expect(sql).toContain('tenant_id = $2');
+      expect(params).toEqual(['abc', 'tenant-abc']);
+    });
+
+    it('returns 404 when the product exists but belongs to a different tenant', async () => {
+      mockQueryOne.mockResolvedValue(null);
+      const request = createMockRequest('/api/products/abc', { searchParams: { tenant_id: 'tenant-other' } });
+      const response = await GET(request, { params: Promise.resolve({ id: 'abc' }) });
+      expect(response.status).toBe(404);
+    });
   });
 
   describe('successful product retrieval', () => {
@@ -56,7 +95,7 @@ describe('GET /api/products/[id]', () => {
 
       mockQueryOne.mockResolvedValue(mockProduct);
 
-      const request = createGetRequest('/api/products/1');
+      const request = createGetRequest('/api/products/1', TENANT_QUERY);
       const response = await GET(request, { params: Promise.resolve({ id: '1' }) });
       const data = await parseJsonResponse(response);
 
@@ -90,7 +129,7 @@ describe('GET /api/products/[id]', () => {
 
       mockQueryOne.mockResolvedValue(mockProduct);
 
-      const request = createGetRequest('/api/products/2');
+      const request = createGetRequest('/api/products/2', TENANT_QUERY);
       const response = await GET(request, { params: Promise.resolve({ id: '2' }) });
       const data = await parseJsonResponse(response);
 
@@ -133,7 +172,7 @@ describe('GET /api/products/[id]', () => {
 
       mockQueryOne.mockResolvedValue(mockProduct);
 
-      const request = createGetRequest('/api/products/3');
+      const request = createGetRequest('/api/products/3', TENANT_QUERY);
       const response = await GET(request, { params: Promise.resolve({ id: '3' }) });
       const data = await parseJsonResponse(response);
 
@@ -150,7 +189,7 @@ describe('GET /api/products/[id]', () => {
     it('should return 404 when product does not exist', async () => {
       mockQueryOne.mockResolvedValue(null);
 
-      const request = createGetRequest('/api/products/999');
+      const request = createGetRequest('/api/products/999', TENANT_QUERY);
       const response = await GET(request, { params: Promise.resolve({ id: '999' }) });
       const data = await parseJsonResponse(response);
 
@@ -162,7 +201,7 @@ describe('GET /api/products/[id]', () => {
     it('should return 404 for non-existent UUID', async () => {
       mockQueryOne.mockResolvedValue(null);
 
-      const request = createGetRequest('/api/products/00000000-0000-0000-0000-000000000000');
+      const request = createGetRequest('/api/products/00000000-0000-0000-0000-000000000000', TENANT_QUERY);
       const response = await GET(request, {
         params: Promise.resolve({ id: '00000000-0000-0000-0000-000000000000' }),
       });
@@ -221,7 +260,7 @@ describe('GET /api/products/[id]', () => {
 
       mockQueryOne.mockResolvedValue(mockProduct);
 
-      const request = createGetRequest('/api/products/4');
+      const request = createGetRequest('/api/products/4', TENANT_QUERY);
       const response = await GET(request, { params: Promise.resolve({ id: '4' }) });
       const data = await parseJsonResponse(response);
 
@@ -258,7 +297,7 @@ describe('GET /api/products/[id]', () => {
 
       mockQueryOne.mockResolvedValue(mockProduct);
 
-      const request = createGetRequest('/api/products/5');
+      const request = createGetRequest('/api/products/5', TENANT_QUERY);
       const response = await GET(request, { params: Promise.resolve({ id: '5' }) });
       const data = await parseJsonResponse(response);
 
@@ -274,7 +313,7 @@ describe('GET /api/products/[id]', () => {
     it('should return 500 error when database query fails', async () => {
       mockQueryOne.mockRejectedValue(new Error('Database connection failed'));
 
-      const request = createGetRequest('/api/products/1');
+      const request = createGetRequest('/api/products/1', TENANT_QUERY);
       const response = await GET(request, { params: Promise.resolve({ id: '1' }) });
       const data = await parseJsonResponse(response);
 
@@ -286,7 +325,7 @@ describe('GET /api/products/[id]', () => {
     it('should handle database timeout', async () => {
       mockQueryOne.mockRejectedValue(new Error('Query timeout'));
 
-      const request = createGetRequest('/api/products/1');
+      const request = createGetRequest('/api/products/1', TENANT_QUERY);
       const response = await GET(request, { params: Promise.resolve({ id: '1' }) });
 
       expect(response.status).toBe(500);
@@ -320,7 +359,7 @@ describe('GET /api/products/[id]', () => {
 
       mockQueryOne.mockResolvedValue(mockProduct);
 
-      const request = createGetRequest('/api/products/6');
+      const request = createGetRequest('/api/products/6', TENANT_QUERY);
       const response = await GET(request, { params: Promise.resolve({ id: '6' }) });
       const data = await parseJsonResponse(response);
 
@@ -354,7 +393,7 @@ describe('GET /api/products/[id]', () => {
 
       mockQueryOne.mockResolvedValue(mockProduct);
 
-      const request = createGetRequest('/api/products/7');
+      const request = createGetRequest('/api/products/7', TENANT_QUERY);
       const response = await GET(request, { params: Promise.resolve({ id: '7' }) });
       const data = await parseJsonResponse(response);
 
