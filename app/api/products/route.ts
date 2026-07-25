@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { rateLimiters, checkRateLimit, createRateLimitResponse, getClientIp } from '@/lib/rate-limit';
 import { securityLogger } from '@/lib/security-logger';
+import { getRequiredTenantId, MissingTenantError } from '@/lib/tenant';
 
 export interface ProductListItem {
   id: string;
@@ -18,10 +19,20 @@ export interface ProductListItem {
   } | null;
 }
 
-// GET /api/products - List all products (public)
+// GET /api/products - List all products for the caller's tenant (public)
 export async function GET(request: NextRequest) {
   const ip = getClientIp(request);
-  
+
+  let tenantId: string;
+  try {
+    tenantId = getRequiredTenantId(request);
+  } catch (err) {
+    if (err instanceof MissingTenantError) {
+      return NextResponse.json({ error: 'Missing tenant context' }, { status: 400 });
+    }
+    throw err;
+  }
+
   try {
     // Rate limiting - relaxed (60 req/min) for public shop browsing
     // This endpoint is read-only with caching, so it's safe to be more permissive
@@ -47,10 +58,11 @@ export async function GET(request: NextRequest) {
         attributes
       FROM products
       WHERE deleted_at IS NULL
+        AND tenant_id = $1
         AND (supplier_id IS NULL OR approval_status = 'published')
     `;
-    const params: unknown[] = [];
-    let paramIndex = 1;
+    const params: unknown[] = [tenantId];
+    let paramIndex = 2;
 
     if (category && category !== 'all') {
       sql += ` AND LOWER(category) = LOWER($${paramIndex++})`;
