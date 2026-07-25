@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/admin-auth';
 import { query, queryOne } from '@/lib/db';
 import { logAction } from '@/lib/audit';
-import { getRequiredTenantId, MissingTenantError } from '@/lib/tenant';
+import { getRequiredTenantId, MissingTenantError, FALLBACK_TENANT_ID } from '@/lib/tenant';
 
 // The /admin panel isn't tenant-scoped in routing yet (see BYPASS_PREFIXES in
 // middleware.ts and "What's still open after this plan" in
@@ -13,7 +13,7 @@ function resolveTenantIdForAdminWrite(request: NextRequest): string {
   try {
     return getRequiredTenantId(request);
   } catch (err) {
-    if (err instanceof MissingTenantError) return 'tenant_icc_default';
+    if (err instanceof MissingTenantError) return FALLBACK_TENANT_ID;
     throw err;
   }
 }

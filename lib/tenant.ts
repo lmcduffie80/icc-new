@@ -168,6 +168,15 @@ export function tenantHasAccess(tenant: Tenant): boolean {
   return true;
 }
 
+/**
+ * Fallback tenant id for admin/supplier write endpoints that aren't yet
+ * reachable through path-based tenant middleware (see middleware.ts
+ * BYPASS_PREFIXES). Used until a real tenant-scoped admin/supplier UI
+ * exists — see docs/superpowers/specs/2026-07-24-agrovus-ecommerce-multitenant-design.md
+ * "What's still open after this plan".
+ */
+export const FALLBACK_TENANT_ID = 'tenant_icc_default';
+
 /** Thrown by getRequiredTenantId when a request carries no resolvable tenant. */
 export class MissingTenantError extends Error {
   constructor() {
