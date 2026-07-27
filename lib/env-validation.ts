@@ -54,6 +54,7 @@ const envSchema = z.object({
   // Stripe Payment Processing
   STRIPE_SECRET_KEY: z.string().min(1),
   STRIPE_WEBHOOK_SECRET: z.string().min(1),
+  STRIPE_CONNECT_WEBHOOK_SECRET: z.string().min(1),
   NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: z.string().min(1),
 
   // DocuSign E-Signature (optional - for contract signing)
