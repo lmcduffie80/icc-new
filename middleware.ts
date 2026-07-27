@@ -29,12 +29,22 @@ function isBypassPath(pathname: string): boolean {
   return BYPASS_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }
 
+// Static files served out of /public (images, fonts, etc.) live at the site
+// root, not under a tenant prefix. Tenant slugs never contain a dot, so any
+// request whose last path segment has a file extension is a static asset,
+// not a tenant slug — treat it the same as the other bypass prefixes instead
+// of letting it fall through to slug resolution and get redirected/404'd.
+function isStaticAssetPath(pathname: string): boolean {
+  const lastSegment = pathname.slice(pathname.lastIndexOf('/') + 1);
+  return /\.[a-zA-Z0-9]+$/.test(lastSegment);
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const search = request.nextUrl.search;
 
-  // Let bypass routes through immediately
-  if (isBypassPath(pathname)) {
+  // Let bypass routes and static assets through immediately
+  if (isBypassPath(pathname) || isStaticAssetPath(pathname)) {
     return NextResponse.next();
   }
 
@@ -141,9 +151,11 @@ export async function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     /*
-     * Match all request paths except Next.js internals and static files.
-     * Tenant resolution only runs for paths that could be tenant-scoped.
+     * Match all request paths except Next.js internals and any path whose
+     * last segment has a file extension (public/ static assets — images,
+     * fonts, css, etc.). Tenant resolution only runs for paths that could be
+     * tenant-scoped, i.e. real routes with no file extension.
      */
-    '/((?!_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml).*)',
+    '/((?!_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|.*\\.[a-zA-Z0-9]+$).*)',
   ],
 };

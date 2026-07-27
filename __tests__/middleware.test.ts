@@ -92,4 +92,22 @@ describe('middleware — default tenant redirect', () => {
     expect(response.status).toBe(307);
     expect(response.headers.get('location')).toBe('http://localhost:3000/icc?ref=email-campaign');
   });
+
+  it('does not redirect root-level static assets from /public (e.g. images)', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false } as Response);
+    global.fetch = fetchMock;
+    const request = new NextRequest(new URL('http://localhost:3000/hero-corn-field.jpg'));
+    const response = await middleware(request);
+    expect(response.headers.get('location')).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('does not redirect nested static assets from /public (e.g. /states/GA.svg)', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false } as Response);
+    global.fetch = fetchMock;
+    const request = new NextRequest(new URL('http://localhost:3000/states/GA.svg'));
+    const response = await middleware(request);
+    expect(response.headers.get('location')).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });
