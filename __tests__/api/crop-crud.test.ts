@@ -114,7 +114,7 @@ describe('POST /api/crop', () => {
 
   it('should return 401 when not authenticated', async () => {
     mockGetSession.mockResolvedValue(null);
-    const req = createPostRequest('/api/crop', {
+    const req = createPostRequest('/api/crop?tenant_id=tenant-1', {
       plan_name: 'Test Plan',
       crop: 'corn',
       plan_year: 2026,
@@ -122,6 +122,19 @@ describe('POST /api/crop', () => {
     });
     const res = await POST(req);
     expect(res.status).toBe(401);
+  });
+
+  it('should return 400 when tenant context is missing', async () => {
+    const req = createPostRequest('/api/crop', {
+      plan_name: 'Test Plan',
+      crop: 'corn',
+      plan_year: 2026,
+      total_acres: 1000,
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(400);
+    const data = await parseJsonResponse(res);
+    expect(data.error).toBe('Missing tenant context');
   });
 
   it('should return 400 for invalid crop', async () => {
@@ -137,7 +150,7 @@ describe('POST /api/crop', () => {
 
   it('should create a plan and return 201', async () => {
     mockQuery.mockResolvedValue([{ id: 1 }]);
-    const req = createPostRequest('/api/crop', {
+    const req = createPostRequest('/api/crop?tenant_id=tenant-1', {
       plan_name: 'Corn Plan 2026',
       crop: 'corn',
       plan_year: 2026,
@@ -149,6 +162,10 @@ describe('POST /api/crop', () => {
     expect(res.status).toBe(201);
     const data = await parseJsonResponse(res);
     expect(data.plan.id).toBe(1);
+    expect(mockQuery).toHaveBeenCalledWith(
+      expect.stringContaining('tenant_id'),
+      expect.arrayContaining(['tenant-1'])
+    );
   });
 
   it('should return 400 when plan_name is missing', async () => {
