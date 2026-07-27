@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useTenant } from '@/components/tenant-provider';
 import {
   ChevronLeft,
   ChevronRight,
@@ -70,6 +71,7 @@ function CostTrend({ current, previous }: { current: string | null; previous: st
 
 export default function PlanHistoryPage() {
   const router = useRouter();
+  const tenant = useTenant();
   const [plans, setPlans] = useState<CropPlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [cloningId, setCloningId] = useState<number | null>(null);
@@ -102,7 +104,7 @@ export default function PlanHistoryPage() {
     }
     setCloningId(plan.id);
     try {
-      const res = await fetch(`/api/crop/${plan.id}/clone`, {
+      const res = await fetch(`/api/crop/${plan.id}/clone?tenant_id=${tenant.id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ plan_year: yearNum }),

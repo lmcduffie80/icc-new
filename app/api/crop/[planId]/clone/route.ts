@@ -4,6 +4,7 @@ import { auth } from '@/lib/auth';
 import { query } from '@/lib/db';
 import { rateLimiters, checkRateLimit, createRateLimitResponse, getClientIp } from '@/lib/rate-limit';
 import { securityLogger } from '@/lib/security-logger';
+import { getRequiredTenantId, MissingTenantError } from '@/lib/tenant';
 import { z } from 'zod';
 
 const cloneSchema = z.object({
@@ -42,6 +43,16 @@ export async function POST(
 
   const { plan_year, plan_name } = parsed.data;
 
+  let tenantId: string;
+  try {
+    tenantId = getRequiredTenantId(request);
+  } catch (err) {
+    if (err instanceof MissingTenantError) {
+      return NextResponse.json({ error: 'Missing tenant context' }, { status: 400 });
+    }
+    throw err;
+  }
+
   try {
     const session = await auth.api.getSession({ headers: await headers() });
     if (!session?.user) {
@@ -73,11 +84,12 @@ export async function POST(
     // Create new plan as draft
     const newPlanResult = await query<{ id: number }>(
       `INSERT INTO farmer_crop_plans
-        (user_id, plan_name, crop, plan_year, total_acres, target_weeds, weed_pressure, notes, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'draft')
+        (user_id, tenant_id, plan_name, crop, plan_year, total_acres, target_weeds, weed_pressure, notes, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'draft')
        RETURNING id`,
       [
         session.user.id,
+        tenantId,
         newName,
         original.crop,
         plan_year,

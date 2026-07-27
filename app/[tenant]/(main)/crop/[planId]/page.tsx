@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/components/auth-provider';
+import { useTenant } from '@/components/tenant-provider';
 import { useCartStore } from '@/lib/cart-store';
 import { OrderByDeadline } from '@/components/crop/order-by-deadline';
 import { Button } from '@/components/ui/button';
@@ -130,6 +131,7 @@ function fmtNum(n: string | null | undefined) {
 export default function CropPlanDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const tenant = useTenant();
   const { user, isPending } = useAuth();
   const { addItem } = useCartStore();
   const planId = params?.planId as string;
@@ -206,7 +208,7 @@ export default function CropPlanDetailPage() {
     }
     setCloning(true);
     try {
-      const res = await fetch(`/api/crop/${planId}/clone`, {
+      const res = await fetch(`/api/crop/${planId}/clone?tenant_id=${tenant.id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ plan_year: yearNum }),

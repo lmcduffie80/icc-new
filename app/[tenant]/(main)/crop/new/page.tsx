@@ -19,6 +19,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useTenant } from '@/components/tenant-provider';
 import { calcUnitsNeeded, calcCostPerAcre } from '@/lib/acre-pack-calc';
 import { SoilTemperatureWidget } from '@/components/crop/soil-temperature-widget';
 import { CarbonScoreWidget } from '@/components/crop/carbon-score-widget';
@@ -108,6 +109,7 @@ const CATEGORY_BADGE: Record<string, string> = {
 // --- Component ---
 export default function NewPlanPage() {
   const router = useRouter();
+  const tenant = useTenant();
 
   // Step 1: Crop & Acres
   const [step, setStep] = useState(1);
@@ -236,7 +238,7 @@ export default function NewPlanPage() {
       const acresNum = parseFloat(acres);
       const name = planName.trim() || `${crop.charAt(0).toUpperCase() + crop.slice(1)} Plan ${new Date().getFullYear()}`;
 
-      const createRes = await fetch('/api/crop', {
+      const createRes = await fetch(`/api/crop?tenant_id=${tenant.id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -317,7 +319,7 @@ export default function NewPlanPage() {
       }));
 
       // 3. Save passes and products
-      const saveRes = await fetch(`/api/crop/${planId}/passes`, {
+      const saveRes = await fetch(`/api/crop/${planId}/passes?tenant_id=${tenant.id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
