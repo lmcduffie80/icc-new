@@ -8,6 +8,8 @@ import { paymentIntentCreateSchema } from '@/lib/validation';
 import { validateOrder } from '@/lib/order-validation';
 import { createOrGetStripeCustomer, createPaymentIntent } from '@/lib/stripe';
 import { calculateTax, getTaxRateForState } from '@/lib/tax';
+import { getTenantById, type Tenant } from '@/lib/tenant';
+import { calculateApplicationFeeCents } from '@/lib/stripe-connect';
 
 // Shipping method interface (currently unused but kept for future use)
 /* interface ShippingMethod {
@@ -144,6 +146,36 @@ export async function POST(request: NextRequest) {
       );
       return NextResponse.json(
         { error: 'Payments are currently disabled' },
+        { status: 503 }
+      );
+    }
+
+    // Resolve the tenant for Stripe Connect routing, if this request came from a
+    // tenant storefront. `/api/*` routes bypass the tenant-slug middleware entirely,
+    // so same-origin client fetches pass `?tenant_id=` explicitly (see
+    // getRequiredTenantId in lib/tenant.ts). A missing tenant_id is expected and
+    // valid here (e.g. ICC's own checkout), so we read it directly rather than
+    // using getRequiredTenantId/MissingTenantError.
+    const tenantIdParam = request.nextUrl.searchParams.get('tenant_id');
+    let tenant: Tenant | null = null;
+    if (tenantIdParam) {
+      tenant = await getTenantById(tenantIdParam);
+      if (!tenant) {
+        // A stale/bad tenant_id shouldn't break checkout — fall back to the
+        // direct-charge path below — but it does suggest a client bug worth flagging.
+        console.warn(
+          `[Payment Intent] tenant_id "${tenantIdParam}" did not resolve to a tenant; falling back to direct-charge behavior`
+        );
+      }
+    }
+
+    // Tenant has started Connect onboarding but can't accept charges yet. Block
+    // checkout instead of silently falling back to a direct charge, which would put
+    // the customer's money in ICC's own balance with no automated way to route it
+    // to the tenant later.
+    if (tenant?.stripeConnectAccountId && !tenant.stripeConnectChargesEnabled) {
+      return NextResponse.json(
+        { error: "This store's payment processing isn't fully set up yet. Please try again later." },
         { status: 503 }
       );
     }
@@ -533,6 +565,21 @@ export async function POST(request: NextRequest) {
       session.user.name || undefined
     );
 
+    // If the tenant has a live Connect account, route this as a destination charge.
+    // The amount-in-cents used for application_fee_amount MUST match the cents value
+    // createPaymentIntent will itself derive from `total`, so we compute it once here
+    // and thread it through rather than letting each side round independently.
+    const canRouteToConnect = !!(tenant?.stripeConnectAccountId && tenant.stripeConnectChargesEnabled);
+    const amountCents = Math.round(total * 100);
+    const connectOptions = canRouteToConnect
+      ? {
+          destinationAccountId: tenant!.stripeConnectAccountId!,
+          ...(tenant!.paymentsMode === 'own_stripe'
+            ? { onBehalfOf: tenant!.stripeConnectAccountId! }
+            : { applicationFeeAmountCents: calculateApplicationFeeCents(amountCents, tenant!.commissionBps) }),
+        }
+      : undefined;
+
     // Create payment intent with metadata for later verification
     const { paymentIntent, clientSecret } = await createPaymentIntent(
       total,
@@ -549,12 +596,14 @@ export async function POST(request: NextRequest) {
         ...(freightQuoteId ? { freightQuoteId } : {}),
         ...(shippingCarrier ? { shippingCarrier } : {}),
         ...(liftgateFee > 0 ? { liftgateFee: liftgateFee.toFixed(2) } : {}),
+        ...(tenant ? { tenantId: tenant.id } : {}),
       },
       // Always set setup_future_usage so the payment method remains attachable post-payment.
       // The "Save card" checkbox in the UI controls whether it's actually saved to the DB.
       {
         setupFutureUsage: true,
         ...(paymentSettings.send_receipt_emails ? { receipt_email: session.user.email } : {}),
+        ...(connectOptions ? { connect: connectOptions } : {}),
       }
     );
 

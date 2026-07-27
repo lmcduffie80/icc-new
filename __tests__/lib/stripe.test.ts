@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 /**
  * Stripe Integration Tests
@@ -9,6 +9,31 @@ import { describe, it, expect } from 'vitest';
  *
  * For full integration testing, use test Stripe keys in a test environment.
  */
+
+// `createPaymentIntent` below needs to assert on the exact shape of the request sent
+// to the Stripe SDK, so (unlike the rest of this file) it mocks the 'stripe' package's
+// constructor rather than treating the client as unmockable.
+const { mockPaymentIntentsCreate } = vi.hoisted(() => ({
+  mockPaymentIntentsCreate: vi.fn(),
+}));
+
+vi.mock('stripe', () => ({
+  default: vi.fn().mockImplementation(function StripeMock() {
+    return { paymentIntents: { create: mockPaymentIntentsCreate } };
+  }),
+}));
+
+vi.mock('@/lib/db', () => ({
+  query: vi.fn(),
+  queryOne: vi.fn(),
+}));
+
+vi.mock('@/lib/security-logger', () => ({
+  securityLogger: {
+    logEvent: vi.fn(),
+    logError: vi.fn(),
+  },
+}));
 
 describe('Stripe Integration Types and Interfaces', () => {
   describe('Stripe Customer Record', () => {
@@ -231,5 +256,77 @@ describe('Stripe Integration Types and Interfaces', () => {
       expect(calculateRefund(100, 50)).toBe(50);
       expect(calculateRefund(99.99, 25)).toBe(25);
     });
+  });
+});
+
+describe('createPaymentIntent Stripe Connect routing', () => {
+  beforeEach(async () => {
+    mockPaymentIntentsCreate.mockReset();
+    mockPaymentIntentsCreate.mockResolvedValue({
+      id: 'pi_test123',
+      client_secret: 'pi_test123_secret_test',
+    });
+  });
+
+  it('REGRESSION: without options.connect, sends no transfer_data/on_behalf_of/application_fee_amount keys at all', async () => {
+    const { createPaymentIntent } = await import('@/lib/stripe');
+
+    await createPaymentIntent(100, 'cus_test123', { orderId: 'order_1' });
+
+    expect(mockPaymentIntentsCreate).toHaveBeenCalledTimes(1);
+    const callArg = mockPaymentIntentsCreate.mock.calls[0][0];
+    // Assert absence via Object.keys (not just `=== undefined`) since Stripe's SDK
+    // can be picky about a literal `undefined` value vs. a genuinely absent key.
+    expect(Object.keys(callArg)).not.toContain('transfer_data');
+    expect(Object.keys(callArg)).not.toContain('on_behalf_of');
+    expect(Object.keys(callArg)).not.toContain('application_fee_amount');
+    expect(callArg).toEqual({
+      amount: 10000,
+      currency: 'usd',
+      customer: 'cus_test123',
+      metadata: { orderId: 'order_1' },
+      payment_method_types: ['card'],
+    });
+  });
+
+  it('with options.connect, includes transfer_data.destination, on_behalf_of, and application_fee_amount', async () => {
+    const { createPaymentIntent } = await import('@/lib/stripe');
+
+    await createPaymentIntent(100, 'cus_test123', { orderId: 'order_1' }, {
+      connect: {
+        destinationAccountId: 'acct_dest_123',
+        onBehalfOf: 'acct_dest_123',
+        applicationFeeAmountCents: 150,
+      },
+    });
+
+    const callArg = mockPaymentIntentsCreate.mock.calls[0][0];
+    expect(callArg.transfer_data).toEqual({ destination: 'acct_dest_123' });
+    expect(callArg.on_behalf_of).toBe('acct_dest_123');
+    expect(callArg.application_fee_amount).toBe(150);
+  });
+
+  it('with connect but no onBehalfOf/applicationFeeAmountCents, omits those keys entirely (icc_managed with 0 commission)', async () => {
+    const { createPaymentIntent } = await import('@/lib/stripe');
+
+    await createPaymentIntent(100, 'cus_test123', {}, {
+      connect: { destinationAccountId: 'acct_dest_456' },
+    });
+
+    const callArg = mockPaymentIntentsCreate.mock.calls[0][0];
+    expect(callArg.transfer_data).toEqual({ destination: 'acct_dest_456' });
+    expect(Object.keys(callArg)).not.toContain('on_behalf_of');
+    expect(Object.keys(callArg)).not.toContain('application_fee_amount');
+  });
+
+  it('never sends application_fee_amount: 0 — omits the key rather than sending a literal zero', async () => {
+    const { createPaymentIntent } = await import('@/lib/stripe');
+
+    await createPaymentIntent(100, 'cus_test123', {}, {
+      connect: { destinationAccountId: 'acct_dest_789', applicationFeeAmountCents: 0 },
+    });
+
+    const callArg = mockPaymentIntentsCreate.mock.calls[0][0];
+    expect(Object.keys(callArg)).not.toContain('application_fee_amount');
   });
 });

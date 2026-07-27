@@ -136,17 +136,27 @@ export async function createOrGetStripeCustomer(
  * @param amount - Amount in cents
  * @param customerId - Stripe customer ID
  * @param metadata - Additional metadata for the payment
- * @param options - Optional settings like receipt_email
+ * @param options - Optional settings like receipt_email, and Stripe Connect routing
  * @returns Payment intent with client secret
  */
 export async function createPaymentIntent(
   amount: number,
   customerId: string,
   metadata: Record<string, string>,
-  options?: { receipt_email?: string; setupFutureUsage?: boolean; currency?: string }
+  options?: {
+    receipt_email?: string;
+    setupFutureUsage?: boolean;
+    currency?: string;
+    connect?: {
+      destinationAccountId: string;
+      onBehalfOf?: string;
+      applicationFeeAmountCents?: number;
+    };
+  }
 ): Promise<{ paymentIntent: Stripe.PaymentIntent; clientSecret: string }> {
   try {
     const currency = (options?.currency ?? 'usd').toLowerCase();
+    const connect = options?.connect;
     const paymentIntent = await stripe.paymentIntents.create({
       amount: Math.round(amount * 100), // Convert to cents
       currency,
@@ -155,6 +165,11 @@ export async function createPaymentIntent(
       payment_method_types: ['card'],
       ...(options?.setupFutureUsage && { setup_future_usage: 'off_session' }),
       ...(options?.receipt_email && { receipt_email: options.receipt_email }),
+      ...(connect && { transfer_data: { destination: connect.destinationAccountId } }),
+      ...(connect?.onBehalfOf && { on_behalf_of: connect.onBehalfOf }),
+      ...(connect?.applicationFeeAmountCents && connect.applicationFeeAmountCents > 0
+        ? { application_fee_amount: connect.applicationFeeAmountCents }
+        : {}),
     });
 
     if (!paymentIntent.client_secret) {
