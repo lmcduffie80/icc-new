@@ -123,6 +123,7 @@ describe('Environment Validation', () => {
       process.env.EMAIL_FROM = 'noreply@company.com';
       process.env.STRIPE_SECRET_KEY = 'sk_test_123';
       process.env.STRIPE_WEBHOOK_SECRET = 'whsec_123';
+      process.env.STRIPE_CONNECT_WEBHOOK_SECRET = 'whsec_connect_123';
       process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY = 'pk_test_123';
       vi.stubEnv('NODE_ENV', 'test');
 
@@ -182,6 +183,7 @@ describe('Environment Validation', () => {
       process.env.EMAIL_FROM = 'test@gmail.com'; // Free email provider
       process.env.STRIPE_SECRET_KEY = 'sk_test_123';
       process.env.STRIPE_WEBHOOK_SECRET = 'whsec_123';
+      process.env.STRIPE_CONNECT_WEBHOOK_SECRET = 'whsec_connect_123';
       process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY = 'pk_test_123';
       vi.stubEnv('NODE_ENV', 'test');
 
@@ -231,6 +233,7 @@ describe('Environment Validation', () => {
       process.env.EMAIL_FROM = 'noreply@company.com';
       process.env.STRIPE_SECRET_KEY = 'sk_test_123';
       process.env.STRIPE_WEBHOOK_SECRET = 'whsec_123';
+      process.env.STRIPE_CONNECT_WEBHOOK_SECRET = 'whsec_connect_123';
       process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY = 'pk_test_123';
       process.env.NEXT_PUBLIC_BASE_URL = 'https://example.com';
       vi.stubEnv('NODE_ENV', 'test');
@@ -261,6 +264,7 @@ describe('Environment Validation', () => {
       process.env.EMAIL_FROM = 'noreply@company.com';
       process.env.STRIPE_SECRET_KEY = 'sk_test_123';
       process.env.STRIPE_WEBHOOK_SECRET = 'whsec_123';
+      process.env.STRIPE_CONNECT_WEBHOOK_SECRET = 'whsec_connect_123';
       process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY = 'pk_test_123';
       process.env.NEXT_PUBLIC_BASE_URL = 'https://example.com';
       vi.stubEnv('NODE_ENV', 'test');
@@ -290,6 +294,7 @@ describe('Environment Validation', () => {
       process.env.EMAIL_FROM = 'noreply@company.com';
       process.env.STRIPE_SECRET_KEY = 'sk_test_123';
       process.env.STRIPE_WEBHOOK_SECRET = 'whsec_123';
+      process.env.STRIPE_CONNECT_WEBHOOK_SECRET = 'whsec_connect_123';
       process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY = 'pk_test_123';
       process.env.NEXT_PUBLIC_BASE_URL = 'https://example.com';
       vi.stubEnv('NODE_ENV', 'test');
@@ -321,6 +326,7 @@ describe('Environment Validation', () => {
       process.env.EMAIL_FROM = 'noreply@company.com';
       process.env.STRIPE_SECRET_KEY = 'sk_test_123';
       process.env.STRIPE_WEBHOOK_SECRET = 'whsec_123';
+      process.env.STRIPE_CONNECT_WEBHOOK_SECRET = 'whsec_connect_123';
       process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY = 'pk_test_123';
       process.env.NEXT_PUBLIC_BASE_URL = 'https://example.com';
       

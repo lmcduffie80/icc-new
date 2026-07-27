@@ -1,4 +1,4 @@
-import { Package, User, MessageSquare, CreditCard, Settings, FileText, Wheat, Sprout, type LucideIcon } from 'lucide-react';
+import { Package, User, MessageSquare, CreditCard, Settings, FileText, Wheat, Sprout, Landmark, type LucideIcon } from 'lucide-react';
 
 export interface AccountNavItem {
   href: string;
@@ -53,6 +53,12 @@ export const accountNavItems: AccountNavItem[] = [
     icon: CreditCard,
     label: 'Payment Methods',
     description: 'Manage your payment options',
+  },
+  {
+    href: '/account/payments-setup',
+    icon: Landmark,
+    label: 'Payment Setup',
+    description: 'Manage how your store gets paid.',
   },
   {
     href: '/account/settings',

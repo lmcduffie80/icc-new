@@ -1083,7 +1083,7 @@ export default function CheckoutPage() {
     setMinimumOrderError(null);
 
     try {
-      const response = await fetch('/api/payment/create-intent', {
+      const response = await fetch(`/api/payment/create-intent?tenant_id=${tenant.id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1222,7 +1222,7 @@ export default function CheckoutPage() {
     } finally {
       setIsLoadingPaymentIntent(false);
     }
-  }, [total, items, deliveryFee, taxAmount, selectedDelivery, shippingAddress.state]);
+  }, [total, items, deliveryFee, taxAmount, selectedDelivery, shippingAddress.state, tenant.id]);
 
   // Keep the stable ref in sync with the latest callback so the trigger effect
   // below can call it without listing it as a dependency.
