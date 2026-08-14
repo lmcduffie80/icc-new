@@ -1,12 +1,21 @@
 'use client';
 
 import { useSyncExternalStore } from 'react';
+import Script from 'next/script';
 import { Analytics } from '@vercel/analytics/next';
 import { SpeedInsights } from '@vercel/speed-insights/next';
 import { useCookieConsent } from '@/lib/cookie-consent';
 
+const APOLLO_APP_ID = '69bc4cd5c94afd002126ede3';
+const APOLLO_TRACKER_SRC =
+  'https://assets.apollo.io/micro/website-tracker/tracker.iife.js';
+
 // Subscribe function for useSyncExternalStore (no-op since we just need hydration check)
 const subscribe = () => () => {};
+
+function initApolloTracker() {
+  window.trackingFunctions?.onLoad({ appId: APOLLO_APP_ID });
+}
 
 /**
  * Analytics provider that only loads analytics scripts when user has consented.
@@ -36,6 +45,12 @@ export function AnalyticsProvider() {
     <>
       <Analytics />
       <SpeedInsights />
+      <Script
+        id="apollo-website-tracker"
+        src={APOLLO_TRACKER_SRC}
+        strategy="afterInteractive"
+        onLoad={initApolloTracker}
+      />
     </>
   );
 }

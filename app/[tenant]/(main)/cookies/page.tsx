@@ -17,7 +17,7 @@ export default async function CookiesPage() {
         <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 lg:px-8">
           <h1 className="text-4xl font-bold tracking-tight">Cookie Policy</h1>
           <p className="mt-4 text-lg text-muted-foreground">
-            Last Updated: December 14, 2025
+            Last Updated: August 13, 2026
           </p>
         </div>
       </div>
@@ -133,6 +133,37 @@ export default async function CookiesPage() {
                       <td className="py-2 pr-4 font-mono text-xs">_gid</td>
                       <td className="py-2 pr-4">Google Analytics - distinguishes users</td>
                       <td className="py-2">24 hours</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Marketing Cookies */}
+            <div className="rounded-lg border border-border p-6 space-y-3">
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-800">
+                  Optional
+                </span>
+                <h3 className="text-lg font-semibold">Marketing Cookies</h3>
+              </div>
+              <p className="text-muted-foreground text-sm leading-relaxed">
+                These cookies help us identify companies and prospects who visit our website so our team can follow up with relevant information. They load only after you accept cookies.
+              </p>
+              <div className="mt-4 overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border">
+                      <th className="text-left py-2 pr-4 font-medium">Cookie Name</th>
+                      <th className="text-left py-2 pr-4 font-medium">Purpose</th>
+                      <th className="text-left py-2 font-medium">Duration</th>
+                    </tr>
+                  </thead>
+                  <tbody className="text-muted-foreground">
+                    <tr>
+                      <td className="py-2 pr-4 font-mono text-xs">Apollo visitor tracker</td>
+                      <td className="py-2 pr-4">Identifies visiting companies and contacts for sales outreach</td>
+                      <td className="py-2">Up to 12 months</td>
                     </tr>
                   </tbody>
                 </table>
