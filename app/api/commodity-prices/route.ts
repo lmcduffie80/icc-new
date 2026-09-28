@@ -109,25 +109,20 @@ async function fetchPeanutQuote(): Promise<CommodityQuote | null> {
     );
     if (!res.ok) return null;
     const html = await res.text();
-    const cells = [...html.matchAll(/<td[^>]*>(.*?)<\/td>/gi)].map((m) =>
-      m[1].replace(/<[^>]+>/g, '').replace(/,/g, '').trim()
-    );
-    const rows: { price: number; pct: number }[] = [];
-    for (let i = 0; i + 2 < cells.length; i += 3) {
-      const price = parseFloat(cells[i]);
-      const pct = parseFloat(cells[i + 1].replace('%', ''));
-      if (!Number.isFinite(price) || !Number.isFinite(pct)) continue;
-      rows.push({ price, pct });
-    }
-    const last = rows[rows.length - 1];
-    const prev = rows[rows.length - 2];
+    const points = [...html.matchAll(/<set label='([^']+)' value='([\d.]+)'/g)]
+      .map((m) => ({ label: m[1], price: parseFloat(m[2]) }))
+      .filter((p) => Number.isFinite(p.price));
+    const last = points[points.length - 1];
+    const prev = points[points.length - 2];
     if (!last) return null;
+    const change = prev ? last.price - prev.price : 0;
+    const changePercent = prev && prev.price !== 0 ? (change / prev.price) * 100 : 0;
     return {
       symbol: 'PEANUTS',
       name: 'Peanuts',
       price: last.price,
-      change: prev ? last.price - prev.price : 0,
-      changePercent: last.pct,
+      change,
+      changePercent,
       unit: '$/mt',
       category: 'crop',
       updatedAt: Date.now(),
