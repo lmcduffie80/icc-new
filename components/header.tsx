@@ -16,6 +16,7 @@ const navLinks = [
   { href: '/about', label: 'About' },
   { href: '/shop', label: 'Shop' },
   { href: '/crop', label: 'Crop Planning' },
+  { href: '/soil-intelligence', label: 'Soil Intel' },
   { href: '/contact', label: 'Contact' },
 ];
 

@@ -1,9 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { checkRateLimit, createRateLimitResponse, rateLimiters } from '@/lib/rate-limit';
+import {
+  fetchSoilMoistureForStates,
+  CORN_BELT_FIPS,
+  FIPS_STATE,
+} from '@/lib/smap';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type CommodityCategory = 'crop' | 'fertilizer' | 'input';
+
+export type DroughtAlert = {
+  /** e.g. 'DROUGHT_IA' */
+  id: string;
+  /** e.g. 'Iowa' */
+  stateName: string;
+  /** e.g. 'IA' */
+  stateAbbr: string;
+  /** Mean soil moisture (m³/m³) */
+  soilMoisture: number;
+  /** 'drought' | 'dry' */
+  severity: 'drought' | 'dry';
+};
 
 export type CommodityQuote = {
   symbol: string;
