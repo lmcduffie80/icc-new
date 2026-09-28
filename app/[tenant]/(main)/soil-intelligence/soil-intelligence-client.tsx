@@ -433,9 +433,18 @@ export function SoilIntelligenceClient({
         });
         fetchConditions(params);
       },
-      () => {
+      (err) => {
         setGeoLoading(false);
-        setError('Location access denied. Please enter your ZIP code below.');
+        if (err.code === 1 /* PERMISSION_DENIED */) {
+          setError(
+            'Location access was blocked. To fix: click the lock icon in your browser address bar → Site settings → Location → Allow. Then try again.'
+          );
+        } else if (err.code === 2 /* POSITION_UNAVAILABLE */) {
+          setError('Your device could not determine your location. Please enter your ZIP code instead.');
+        } else {
+          // TIMEOUT (3) or unknown
+          setError('Location request timed out. Please enter your ZIP code below.');
+        }
       },
       { timeout: 10_000, maximumAge: 300_000 }
     );
