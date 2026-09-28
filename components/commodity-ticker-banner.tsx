@@ -146,7 +146,7 @@ export function CommodityTickerBanner() {
     <div
       className="w-full bg-slate-900"
       role="marquee"
-      aria-label="Current corn, soybean, wheat, cotton, and peanut prices"
+      aria-label="Current US crop market prices including corn, soybeans, wheat, cotton, oats, rice, and more"
     >
       <div className="flex items-stretch">
         {/* Pinned label */}
