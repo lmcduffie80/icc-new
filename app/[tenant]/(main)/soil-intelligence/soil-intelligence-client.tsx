@@ -330,6 +330,16 @@ export function SoilIntelligenceClient({
   const [error, setError] = useState('');
   const [highlightState, setHighlightState] = useState<string | undefined>(undefined);
 
+  // Location for the irrigation heatmap — tracked separately from `conditions`
+  // so the heatmap fetch can start in PARALLEL with the soil-conditions fetch
+  // (as soon as we have coordinates) instead of waiting for the whole
+  // conditions card list to finish loading first.
+  const [heatmapLocation, setHeatmapLocation] = useState<{
+    lat: number;
+    lng: number;
+    label: string;
+  } | null>(null);
+
   // Full 48-state moisture map — starts with server-pre-fetched data, then upgrades
   // by fetching the cached API endpoint (avoids any SMAP latency for the user)
   const [moistureForMap, setMoistureForMap] = useState<Record<string, SoilMoisture>>(initialMoistureMap);
@@ -362,6 +372,11 @@ export function SoilIntelligenceClient({
       if (data.location.state_abbr) {
         setHighlightState(data.location.state_abbr);
       }
+      // Refine the heatmap location with the server-resolved label (e.g. a
+      // county/city name instead of a generic placeholder). For the
+      // geolocation flow this reuses the exact same lat/lng already set
+      // below in handleGeolocate, so no duplicate heatmap fetch is triggered.
+      setHeatmapLocation({ lat: data.location.lat, lng: data.location.lng, label: data.location.label });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load data. Please try again.');
     } finally {
@@ -379,6 +394,11 @@ export function SoilIntelligenceClient({
     navigator.geolocation.getCurrentPosition(
       ({ coords }) => {
         setGeoLoading(false);
+        // Kick off the irrigation heatmap fetch immediately — we already
+        // have coordinates, so there's no need to wait for the (slower)
+        // soil-conditions fetch to resolve first. This runs in parallel
+        // instead of as a second sequential wait.
+        setHeatmapLocation({ lat: coords.latitude, lng: coords.longitude, label: 'your location' });
         const params = new URLSearchParams({
           lat: coords.latitude.toString(),
           lng: coords.longitude.toString(),
@@ -548,15 +568,21 @@ export function SoilIntelligenceClient({
                 </Card>
               )}
             </div>
+          </div>
+        </section>
+      )}
 
-            {/* Zoomable field-level irrigation heatmap — reuses the location above */}
-            <div className="mt-4">
-              <IrrigationHeatmapSection
-                lat={conditions.location.lat}
-                lng={conditions.location.lng}
-                locationLabel={conditions.location.label}
-              />
-            </div>
+      {/* Zoomable field-level irrigation heatmap — reuses the location above.
+          Rendered independently of `conditions` so its fetch can run in
+          parallel with the soil-conditions fetch rather than waiting for it. */}
+      {heatmapLocation && (
+        <section className="bg-slate-50 border-b border-border/40 py-10">
+          <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
+            <IrrigationHeatmapSection
+              lat={heatmapLocation.lat}
+              lng={heatmapLocation.lng}
+              locationLabel={heatmapLocation.label}
+            />
           </div>
         </section>
       )}

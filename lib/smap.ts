@@ -138,7 +138,12 @@ async function tryFetchSmapLayer(
   try {
     const res = await fetch(`${SMAP_BASE}?${params}`, {
       signal: AbortSignal.timeout(10_000),
-      next: { revalidate: 0 },
+      // Cache per (layer, fips) for 30 min via Next's Data Cache. The manual
+      // in-memory cache below already covers 1hr within a single serverless
+      // instance; this covers cross-instance/cold-start requests for the
+      // same day+state, which are common since many users query overlapping
+      // states within a short window.
+      next: { revalidate: 1800 },
     });
     if (!res.ok) return null;
 
@@ -176,18 +181,31 @@ export async function fetchSoilMoisture(fips: string): Promise<SoilMoisture | nu
   if (cached && Date.now() < cached.expiresAt) return cached.data;
 
   const today = new Date();
-
-  for (let daysAgo = 2; daysAgo <= 6; daysAgo++) {
+  const candidateDaysAgo = [2, 3, 4, 5, 6];
+  const dateStrings = candidateDaysAgo.map((daysAgo) => {
     const d = new Date(today);
     d.setUTCDate(d.getUTCDate() - daysAgo);
     // Format as YYYY.MM.DD for the SMAP layer name
-    const dateStr = [
+    return [
       d.getUTCFullYear(),
       String(d.getUTCMonth() + 1).padStart(2, '0'),
       String(d.getUTCDate()).padStart(2, '0'),
     ].join('.');
+  });
 
-    const result = await tryFetchSmapLayer(fips, dateStr);
+  // Probe all candidate days IN PARALLEL rather than one at a time. SMAP's
+  // publish lag varies (1-3 days typical, sometimes more), so the freshest
+  // 1-2 days routinely return "no data" — probing sequentially means paying
+  // for the SUM of several round trips (each up to a 10s timeout) before
+  // finding a day that has data. Running them in parallel bounds the wait
+  // to the MAX of a single round trip instead.
+  const attempts = await Promise.all(
+    dateStrings.map((dateStr) => tryFetchSmapLayer(fips, dateStr))
+  );
+
+  // Prefer the most recent day (smallest daysAgo) that actually has data.
+  for (let i = 0; i < attempts.length; i++) {
+    const result = attempts[i];
     if (result) {
       const { condition, conditionLabel } = interpretMoisture(result.mean);
       const data: SoilMoisture = {
@@ -195,7 +213,7 @@ export async function fetchSoilMoisture(fips: string): Promise<SoilMoisture | nu
         median: result.median,
         condition,
         conditionLabel,
-        layerDate: dateStr.replace(/\./g, '-'),
+        layerDate: dateStrings[i].replace(/\./g, '-'),
         fips,
       };
       smapCache.set(fips, { data, expiresAt: Date.now() + SMAP_TTL_MS });
