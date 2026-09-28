@@ -21,7 +21,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { IrrigationHeatmapSection } from '@/components/irrigation/irrigation-heatmap-section';
 import { OpenETSection } from '@/components/irrigation/openet-et-section';
-import type { SoilMoisture, MoistureCondition } from '@/lib/smap';
+import { CORN_BELT_FIPS, type SoilMoisture, type MoistureCondition } from '@/lib/smap';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -313,16 +313,40 @@ function DroughtAlertStrip({ alerts }: { alerts: { state_abbr: string; state_nam
 
 // ─── Main client component ────────────────────────────────────────────────────
 
+const CORN_BELT_STATE_NAMES: Record<string, string> = {
+  IL: 'Illinois', IN: 'Indiana', IA: 'Iowa', KS: 'Kansas', MN: 'Minnesota',
+  MO: 'Missouri', NE: 'Nebraska', ND: 'North Dakota', OH: 'Ohio',
+  SD: 'South Dakota', WI: 'Wisconsin',
+};
+
+type DroughtAlert = { state_abbr: string; state_name: string; mean: number; condition: MoistureCondition };
+
+function computeDroughtAlerts(moistureMap: Record<string, SoilMoisture>): DroughtAlert[] {
+  return Object.entries(moistureMap)
+    .filter(([abbr, m]) =>
+      CORN_BELT_FIPS.includes(m.fips) &&
+      (m.condition === 'drought' || m.condition === 'dry') &&
+      abbr in CORN_BELT_STATE_NAMES
+    )
+    .map(([abbr, m]) => ({
+      state_abbr: abbr,
+      state_name: CORN_BELT_STATE_NAMES[abbr] ?? abbr,
+      mean: m.mean,
+      condition: m.condition as MoistureCondition,
+    }))
+    .sort((a, b) => a.mean - b.mean);
+}
+
 interface SoilIntelligenceClientProps {
-  /** Pre-fetched moisture map (server-side, keyed by state abbr) */
+  /** Initial moisture map — now always empty; client fetches from cached API */
   initialMoistureMap: Record<string, SoilMoisture>;
-  /** Corn Belt drought alerts */
-  droughtAlerts: { state_abbr: string; state_name: string; mean: number; condition: MoistureCondition }[];
+  /** Drought alerts — now always empty; derived client-side from moisture map */
+  droughtAlerts: DroughtAlert[];
 }
 
 export function SoilIntelligenceClient({
   initialMoistureMap,
-  droughtAlerts,
+  droughtAlerts: _initialDroughtAlerts,
 }: SoilIntelligenceClientProps) {
   const [zip, setZip] = useState('');
   const [geoLoading, setGeoLoading] = useState(false);
@@ -341,10 +365,12 @@ export function SoilIntelligenceClient({
     label: string;
   } | null>(null);
 
-  // Full 48-state moisture map — starts with server-pre-fetched data, then upgrades
-  // by fetching the cached API endpoint (avoids any SMAP latency for the user)
+  // Full 48-state moisture map — fetched client-side from the cached API endpoint.
+  // The server no longer blocks page render on the SMAP fetch (10+ s); instead
+  // we start with an empty map and populate it after the fast cached fetch.
   const [moistureForMap, setMoistureForMap] = useState<Record<string, SoilMoisture>>(initialMoistureMap);
-  const [mapLoading, setMapLoading] = useState(Object.keys(initialMoistureMap).length < 40);
+  const [mapLoading, setMapLoading] = useState(true);
+  const [droughtAlerts, setDroughtAlerts] = useState<DroughtAlert[]>([]);
 
   // Fetch full national map data client-side (the endpoint is cached 4 hrs server-side)
   useEffect(() => {
@@ -353,9 +379,10 @@ export function SoilIntelligenceClient({
       .then((data) => {
         if (data.states && Object.keys(data.states).length > 0) {
           setMoistureForMap(data.states);
+          setDroughtAlerts(computeDroughtAlerts(data.states));
         }
       })
-      .catch(() => { /* use server-fetched data if endpoint fails */ })
+      .catch(() => { /* map shows without color data if fetch fails */ })
       .finally(() => setMapLoading(false));
   }, []);
 
