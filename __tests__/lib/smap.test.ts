@@ -70,12 +70,14 @@ describe('fetchSoilMoisture', () => {
     expect(global.fetch).toHaveBeenCalledTimes(5);
   });
 
-  it('returns null when no candidate day has data', async () => {
+  it('returns null when no candidate day has data and Open-Meteo fallback also fails', async () => {
+    // All SMAP probes fail (ok: false) AND the Open-Meteo fallback also fails —
+    // total of 5 SMAP requests + 1 Open-Meteo fallback = 6 fetch calls.
     global.fetch = vi.fn().mockResolvedValue({ ok: false, text: async () => '' } as Response);
 
     const result = await fetchSoilMoisture('20'); // distinct fips, avoids cache collisions
     expect(result).toBeNull();
-    expect(global.fetch).toHaveBeenCalledTimes(5);
+    expect(global.fetch).toHaveBeenCalledTimes(6); // 5 SMAP + 1 Open-Meteo fallback
   });
 
   it('treats a 200 OK "ServerBusy" exception body as no data (not a parse crash)', async () => {

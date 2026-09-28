@@ -211,8 +211,54 @@ const smapCache = new Map<string, { data: SoilMoisture; expiresAt: number }>();
 const SMAP_TTL_MS = 60 * 60 * 1000; // 1 hour — SMAP data is daily
 
 /**
+ * Fallback: fetch soil moisture from Open-Meteo for a given lat/lng.
+ * Used when SMAP is busy or returns no data.
+ */
+async function fetchSoilMoistureFromOpenMeteo(
+  lat: number,
+  lng: number,
+  fips: string
+): Promise<SoilMoisture | null> {
+  try {
+    const url = new URL('https://api.open-meteo.com/v1/forecast');
+    url.searchParams.set('latitude', lat.toFixed(3));
+    url.searchParams.set('longitude', lng.toFixed(3));
+    url.searchParams.set('current', 'soil_moisture_1_to_3cm,soil_moisture_3_to_9cm');
+    url.searchParams.set('timezone', 'auto');
+    url.searchParams.set('forecast_days', '1');
+
+    const res = await fetch(url.toString(), {
+      signal: AbortSignal.timeout(8_000),
+      next: { revalidate: 3600 },
+    });
+    if (!res.ok) return null;
+
+    const data = await res.json() as {
+      current?: { soil_moisture_1_to_3cm?: number; soil_moisture_3_to_9cm?: number }
+    };
+    const m1 = data.current?.soil_moisture_1_to_3cm;
+    const m2 = data.current?.soil_moisture_3_to_9cm;
+    const mean = m1 != null && m2 != null ? (m1 + m2) / 2 : m1 ?? m2 ?? null;
+    if (mean == null || !Number.isFinite(mean)) return null;
+
+    const { condition, conditionLabel } = interpretMoisture(mean);
+    return {
+      mean,
+      median: mean,
+      condition,
+      conditionLabel,
+      layerDate: new Date().toISOString().slice(0, 10),
+      fips,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Fetch soil moisture for a US state by FIPS code.
- * Tries the last 5 days to handle satellite data lag (typically 1–3 days).
+ * Tries SMAP satellite data first (most accurate); falls back to Open-Meteo
+ * model data if SMAP is busy or returns no data.
  * Results are cached in-memory for 1 hour.
  *
  * @param fips - Two-digit US state FIPS code (e.g. '19' for Iowa)
@@ -235,12 +281,7 @@ export async function fetchSoilMoisture(fips: string): Promise<SoilMoisture | nu
     ].join('.');
   });
 
-  // Probe all candidate days IN PARALLEL rather than one at a time. SMAP's
-  // publish lag varies (1-3 days typical, sometimes more), so the freshest
-  // 1-2 days routinely return "no data" — probing sequentially means paying
-  // for the SUM of several round trips (each up to a 10s timeout) before
-  // finding a day that has data. Running them in parallel bounds the wait
-  // to the MAX of a single round trip instead.
+  // Probe all candidate days IN PARALLEL rather than one at a time.
   const attempts = await Promise.all(
     dateStrings.map((dateStr) => tryFetchSmapLayer(fips, dateStr))
   );
@@ -260,6 +301,18 @@ export async function fetchSoilMoisture(fips: string): Promise<SoilMoisture | nu
       };
       smapCache.set(fips, { data, expiresAt: Date.now() + SMAP_TTL_MS });
       return data;
+    }
+  }
+
+  // SMAP returned nothing (ServerBusy or no data) — fall back to Open-Meteo.
+  // Use the state centroid for the Open-Meteo call.
+  const abbr = FIPS_STATE[fips];
+  if (abbr && STATE_CENTROIDS[abbr]) {
+    const [lat, lng] = STATE_CENTROIDS[abbr];
+    const fallback = await fetchSoilMoistureFromOpenMeteo(lat, lng, fips);
+    if (fallback) {
+      smapCache.set(fips, { data: fallback, expiresAt: Date.now() + SMAP_TTL_MS });
+      return fallback;
     }
   }
 
