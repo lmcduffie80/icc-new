@@ -329,8 +329,23 @@ export function SoilIntelligenceClient({
   const [error, setError] = useState('');
   const [highlightState, setHighlightState] = useState<string | undefined>(undefined);
 
-  // Build moisture condition map for USMap (just the condition enum)
-  const moistureForMap: Record<string, SoilMoisture> = initialMoistureMap;
+  // Full 48-state moisture map — starts with server-pre-fetched data, then upgrades
+  // by fetching the cached API endpoint (avoids any SMAP latency for the user)
+  const [moistureForMap, setMoistureForMap] = useState<Record<string, SoilMoisture>>(initialMoistureMap);
+  const [mapLoading, setMapLoading] = useState(Object.keys(initialMoistureMap).length < 40);
+
+  // Fetch full national map data client-side (the endpoint is cached 4 hrs server-side)
+  useEffect(() => {
+    fetch('/api/crop/soil-moisture-map')
+      .then((r) => r.ok ? r.json() as Promise<{ states: Record<string, SoilMoisture> }> : Promise.reject())
+      .then((data) => {
+        if (data.states && Object.keys(data.states).length > 0) {
+          setMoistureForMap(data.states);
+        }
+      })
+      .catch(() => { /* use server-fetched data if endpoint fails */ })
+      .finally(() => setMapLoading(false));
+  }, []);
 
   const fetchConditions = useCallback(async (params: URLSearchParams) => {
     setDataLoading(true);
@@ -569,7 +584,13 @@ export function SoilIntelligenceClient({
             </div>
           )}
 
-          <div className="rounded-2xl border border-border/60 bg-white p-4 sm:p-6 shadow-sm">
+          <div className="relative rounded-2xl border border-border/60 bg-white p-4 sm:p-6 shadow-sm">
+            {mapLoading && (
+              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-2xl bg-white/80 backdrop-blur-sm">
+                <Loader2 className="h-6 w-6 animate-spin text-emerald-600" />
+                <p className="text-sm text-muted-foreground">Loading satellite moisture data…</p>
+              </div>
+            )}
             <USMap
               moistureData={moistureForMap}
               highlightState={highlightState}

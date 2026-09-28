@@ -3,6 +3,7 @@ import { SoilIntelligenceClient } from './soil-intelligence-client';
 import {
   fetchSoilMoistureForStates,
   CORN_BELT_FIPS,
+  CONTINENTAL_FIPS,
   FIPS_STATE,
   type SoilMoisture,
   type MoistureCondition,
@@ -38,8 +39,10 @@ export default async function SoilIntelligencePage() {
 
   try {
     const byFips = await fetchSoilMoistureForStates(
-      // We fetch all states here; the lib caps each call to 10s with AbortSignal.timeout
-      CORN_BELT_FIPS  // Start with Corn Belt for fast first paint; map fills in client-side
+      // Fetch all 48 continental states — this runs at build/revalidation time (ISR),
+      // so users never wait for it. Results are also cached in-memory for 1 hour
+      // within the same serverless worker. SMAP calls run in parallel (~3–5 s total).
+      CONTINENTAL_FIPS
     );
 
     for (const [fips, data] of Object.entries(byFips)) {

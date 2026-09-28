@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { usePathname } from 'next/navigation';
 import { Menu, Search, ShoppingCart, X, User, LogOut } from 'lucide-react';
 import { useCartStore } from '@/lib/cart-store';
 import { useSearchShortcut } from '@/components/use-search-shortcut';
@@ -12,15 +13,21 @@ import { useAuth } from '@/components/auth-provider';
 import { signOut } from '@/lib/auth-client';
 import { accountNavItems } from '@/lib/account-navigation';
 
-const navLinks = [
-  { href: '/about', label: 'About' },
-  { href: '/shop', label: 'Shop' },
-  { href: '/crop', label: 'Crop Planning' },
-  { href: '/soil-intelligence', label: 'Soil Intel' },
-  { href: '/contact', label: 'Contact' },
+// Nav link slugs (tenant prefix is added at render time via usePathname)
+const NAV_SLUGS = [
+  { slug: 'about',            label: 'About'         },
+  { slug: 'shop',             label: 'Shop'          },
+  { slug: 'crop',             label: 'Crop Planning' },
+  { slug: 'soil-intelligence',label: 'Soil Intel'    },
+  { slug: 'contact',          label: 'Contact'       },
 ];
 
 export function Header() {
+  const pathname = usePathname();
+  // Derive tenant slug from the first path segment (e.g. "/icc/shop" → "icc")
+  const tenantSlug = pathname.split('/').filter(Boolean)[0] ?? 'icc';
+  const navLinks = NAV_SLUGS.map((n) => ({ href: `/${tenantSlug}/${n.slug}`, label: n.label }));
+
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
