@@ -19,6 +19,7 @@ import {
 import { USMap } from '@/components/us-map';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { IrrigationHeatmapSection } from '@/components/irrigation/irrigation-heatmap-section';
 import type { SoilMoisture, MoistureCondition } from '@/lib/smap';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -546,6 +547,15 @@ export function SoilIntelligenceClient({
                   </CardContent>
                 </Card>
               )}
+            </div>
+
+            {/* Zoomable field-level irrigation heatmap — reuses the location above */}
+            <div className="mt-4">
+              <IrrigationHeatmapSection
+                lat={conditions.location.lat}
+                lng={conditions.location.lng}
+                locationLabel={conditions.location.label}
+              />
             </div>
           </div>
         </section>

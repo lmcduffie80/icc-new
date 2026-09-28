@@ -92,10 +92,12 @@ const nextConfig: NextConfig = {
             key: 'Referrer-Policy',
             value: 'strict-origin-when-cross-origin',
           },
-          // Restrict browser features
+          // Restrict browser features — geolocation is allowed for this origin
+          // only (used by the "Use My Location" soil intelligence / irrigation
+          // heatmap features; camera/microphone remain fully disabled).
           {
             key: 'Permissions-Policy',
-            value: 'camera=(), microphone=(), geolocation=(), interest-cohort=()',
+            value: 'camera=(), microphone=(), geolocation=(self), interest-cohort=()',
           },
           // HSTS - Force HTTPS (only enable after testing!)
           {
