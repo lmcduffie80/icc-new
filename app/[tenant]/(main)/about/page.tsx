@@ -175,9 +175,9 @@ const values = [
 
 const history = [
   {
-    year: '2022',
+    year: '2023',
     title: 'The Beginning',
-    description: 'Founded by a group of farmers and technologists who saw the need for greater transparency and community in agriculture.',
+    description: 'Founded in December 2023 by a group of farmers and technologists who saw the need for greater transparency and community in agriculture.',
   },
   {
     year: '2025',
