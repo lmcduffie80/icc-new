@@ -7,13 +7,13 @@ import type { CommodityQuote, CommodityCategory } from '@/app/api/commodity-pric
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatPrice(price: number, unit: string): string {
-  // Prices under $10 (like natural gas) show 3 decimal places;
-  // prices over $100 (like soybean meal) show 2; everything else 2.
-  const decimals = price < 10 ? 3 : 2;
-  return price.toLocaleString('en-US', {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-  }) + unit;
+  const formatted = price.toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  if (unit.startsWith('$')) return `$${formatted}${unit.slice(1)}`;
+  if (unit.startsWith('¢')) return `${formatted}¢${unit.slice(1)}`;
+  return formatted + unit;
 }
 
 // ─── Single item ──────────────────────────────────────────────────────────────
@@ -122,10 +122,8 @@ function MarqueeTrack({ quotes }: MarqueeProps) {
 /**
  * CommodityTickerBanner
  *
- * Full-width scrolling ticker displaying live US commodity market data
- * relevant to farmers: crop futures (corn, soybeans, wheat, cotton, cattle,
- * hogs, soybean oil/meal), fertilizer market indicators (Nutrien, Mosaic,
- * CF Industries, CVR Partners), and key production inputs (natural gas).
+ * Full-width scrolling ticker for corn, soybeans, wheat, and cotton futures,
+ * plus the latest monthly peanut price.
  *
  * Data is fetched from /api/commodity-prices, which caches upstream results
  * for 5 minutes. Hover pauses the scroll. Renders nothing until data arrives.
@@ -148,7 +146,7 @@ export function CommodityTickerBanner() {
     <div
       className="w-full bg-slate-900"
       role="marquee"
-      aria-label="US agricultural commodity and fertilizer market prices"
+      aria-label="Current corn, soybean, wheat, cotton, and peanut prices"
     >
       <div className="flex items-stretch">
         {/* Pinned label */}
