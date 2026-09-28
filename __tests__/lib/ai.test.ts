@@ -217,11 +217,50 @@ describe('generateAcrePackProgram', () => {
     );
   });
 
-  it('should throw when Claude returns invalid JSON', async () => {
+  it('should throw a descriptive error when Claude returns invalid JSON', async () => {
     mockCreate.mockResolvedValue({
       content: [{ type: 'text', text: 'not valid json at all' }],
     });
 
-    await expect(generateAcrePackProgram('cotton', MOCK_PRODUCTS)).rejects.toThrow();
+    await expect(generateAcrePackProgram('cotton', MOCK_PRODUCTS)).rejects.toThrow(
+      'Failed to parse AI acre-pack program response'
+    );
+  });
+
+  it('should surface a truncation-specific error when the response is cut off mid-object', async () => {
+    const fullResponse = JSON.stringify({
+      passes: [
+        {
+          name: 'Pre-Emerge Herbicide',
+          timing_label: 'Spring, before planting',
+          category: 'Herbicides',
+          description: 'Weed control before planting',
+          is_required: true,
+          sort_order: 1,
+          products: [
+            {
+              product_id: 'prod-1',
+              product_name: 'Glyphosate 41%',
+              is_recommended: true,
+              default_rate_per_acre: 32,
+              min_rate: 22,
+              max_rate: 44,
+              rate_unit: 'fl oz',
+              unit_size: 265,
+              unit_size_unit: 'gal',
+              lbs_per_gallon: 10,
+              reasoning: 'Standard burndown rate',
+            },
+          ],
+        },
+      ],
+      summary: 'Test program',
+    });
+    // Simulates hitting max_tokens before the model finished writing the JSON object
+    mockCreate.mockResolvedValue({
+      content: [{ type: 'text', text: fullResponse.slice(0, -20) }],
+    });
+
+    await expect(generateAcrePackProgram('cotton', MOCK_PRODUCTS)).rejects.toThrow('cut off');
   });
 });

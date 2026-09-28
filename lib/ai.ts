@@ -93,6 +93,32 @@ const CROP_CONTEXT: Record<string, string> = {
   cotton: `Cotton production typically involves: (1) Burndown/pre-plant herbicide before planting, (2) Pre-emerge herbicide at planting for residual weed control, (3) Post-emerge herbicide (layby) for mid-season weed control, (4) Fungicide for boll rot/target spot, (5) Insecticide for bollworm/plant bugs, (6) Plant growth regulators (mepiquat chloride) to manage plant height, (7) Defoliants/harvest aids before harvest, (8) Adjuvants/surfactants to improve spray efficacy.`,
 };
 
+/**
+ * Safely parses JSON text returned by the AI model.
+ *
+ * Claude's raw text can occasionally be truncated (hit max_tokens mid-object)
+ * or wrapped in stray characters despite instructions to return raw JSON.
+ * A bare `JSON.parse` on that text throws an opaque `SyntaxError` that isn't
+ * actionable for the caller/user. This wraps parsing with truncation
+ * detection and a clear, descriptive error instead.
+ */
+function parseAIJson<T>(rawText: string, context: string): T {
+  try {
+    return JSON.parse(rawText) as T;
+  } catch (parseError) {
+    const trimmed = rawText.trim();
+    const looksTruncated =
+      trimmed.length > 0 && !trimmed.endsWith('}') && !trimmed.endsWith(']');
+    const reason = looksTruncated
+      ? 'the response appears to have been cut off before it finished'
+      : 'the response was not valid JSON';
+    throw new Error(
+      `Failed to parse AI ${context} response: ${reason}. ` +
+        `(${parseError instanceof Error ? parseError.message : 'unknown parse error'})`
+    );
+  }
+}
+
 function buildProductCatalog(products: ProductForAI[], approvedRates?: Map<string, ApprovedProductRate>): string {
   return products
     .map((p) => {
@@ -212,7 +238,9 @@ Important:
 
   const message = await client.messages.create({
       model: 'claude-sonnet-4-6',
-    max_tokens: 4096,
+    // A full multi-pass program with per-product reasoning can be lengthy;
+    // 4096 was too tight and risked mid-JSON truncation (see parseAIJson).
+    max_tokens: 8192,
     messages: [
       {
         role: 'user',
@@ -233,7 +261,7 @@ Important:
     rawText = rawText.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
   }
 
-  const parsed = JSON.parse(rawText) as AIDraftProgram;
+  const parsed = parseAIJson<AIDraftProgram>(rawText, 'acre-pack program');
 
   // Validate structure
   if (!Array.isArray(parsed.passes)) {
@@ -389,7 +417,9 @@ Important:
   const message = await client.messages.create(
     {
       model: 'claude-sonnet-4-6',
-      max_tokens: 4096,
+      // A full multi-pass program with per-product reasoning can be lengthy;
+      // 4096 was too tight and risked mid-JSON truncation (see parseAIJson).
+      max_tokens: 8192,
       messages: [{ role: 'user', content: userPrompt }],
       system: FARMER_SYSTEM_PROMPT,
     },
@@ -406,7 +436,7 @@ Important:
     rawText = rawText.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
   }
 
-  const parsed = JSON.parse(rawText) as FarmerDraftPlan;
+  const parsed = parseAIJson<FarmerDraftPlan>(rawText, 'crop plan');
 
   if (!Array.isArray(parsed.passes)) {
     throw new Error('AI response missing passes array');

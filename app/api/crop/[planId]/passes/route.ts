@@ -15,7 +15,10 @@ const productSchema = z.object({
   rate_unit: z.string().max(30),
   unit_size: z.number().nonnegative(),
   unit_size_unit: z.string().max(30).nullable().optional(),
-  lbs_per_gallon: z.number().positive().nullable().optional(),
+  // nonnegative (not positive) — some legacy product data stores "not applicable" as 0
+  // rather than null, and a strict `.positive()` check rejected that as a validation
+  // failure, blocking the save entirely.
+  lbs_per_gallon: z.number().nonnegative().nullable().optional(),
   units_needed: z.number().nonnegative().optional(),
   unit_cost: z.number().nonnegative().optional(),
   line_total: z.number().nonnegative().optional(),

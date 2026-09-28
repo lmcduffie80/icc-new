@@ -141,7 +141,8 @@ export async function POST(request: NextRequest) {
           rate_unit: r.rate_unit,
           unit_size: parseFloat(r.unit_size),
           unit_size_unit: r.unit_size_unit,
-          lbs_per_gallon: r.lbs_per_gallon ? parseFloat(r.lbs_per_gallon) : null,
+          // Guard against a stored "0" string being truthy — treat non-positive as "not applicable" (null)
+          lbs_per_gallon: r.lbs_per_gallon && parseFloat(r.lbs_per_gallon) > 0 ? parseFloat(r.lbs_per_gallon) : null,
         },
       ])
     );
@@ -179,6 +180,13 @@ export async function POST(request: NextRequest) {
     if (message.includes('unknown product_id')) {
       return NextResponse.json(
         { error: 'AI generated an invalid plan. Please try again.' },
+        { status: 422 }
+      );
+    }
+    if (message.includes('Failed to parse AI')) {
+      // The model's JSON output was truncated or malformed (see lib/ai.ts parseAIJson)
+      return NextResponse.json(
+        { error: 'The AI response was incomplete. Please try again — narrowing your target weeds can also help.' },
         { status: 422 }
       );
     }

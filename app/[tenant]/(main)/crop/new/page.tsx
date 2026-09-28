@@ -54,6 +54,33 @@ interface FarmerDraftPlan {
   weed_management_notes: string;
 }
 
+/**
+ * Reads a fetch Response as JSON, guarding against non-JSON bodies (e.g. a
+ * platform-level timeout/size-limit page) so callers never hit a raw,
+ * uncaught `SyntaxError` from `res.json()` — surfaced to users as a
+ * confusing "parsing error" instead of an actionable message.
+ */
+async function parseJsonResponse<T = unknown>(
+  res: Response
+): Promise<{ ok: true; data: T } | { ok: false; error: string }> {
+  let data: unknown = null;
+  try {
+    data = await res.json();
+  } catch {
+    return {
+      ok: false,
+      error: res.ok
+        ? 'The server returned an unexpected response. Please try again.'
+        : `Something went wrong (status ${res.status}). Please try again.`,
+    };
+  }
+  if (!res.ok) {
+    const message = (data as { error?: string } | null)?.error;
+    return { ok: false, error: message || 'Something went wrong. Please try again.' };
+  }
+  return { ok: true, data: data as T };
+}
+
 // --- Constants ---
 const CROPS = [
   {
@@ -196,12 +223,12 @@ export default function NewPlanPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      const data = await res.json();
-      if (!res.ok) {
-        setGenError(data.error ?? 'Failed to generate plan. Please try again.');
+      const result = await parseJsonResponse<{ draft: FarmerDraftPlan }>(res);
+      if (!result.ok) {
+        setGenError(result.error);
         return;
       }
-      setDraft(data.draft);
+      setDraft(result.data.draft);
       setStep(3);
     } catch {
       setGenError('Network error. Please try again.');
@@ -250,13 +277,13 @@ export default function NewPlanPage() {
           weed_pressure: weedPressure,
         }),
       });
-      const createData = await createRes.json();
-      if (!createRes.ok) {
-        setSaveError(createData.error ?? 'Failed to create plan.');
+      const createResult = await parseJsonResponse<{ plan: { id: number } }>(createRes);
+      if (!createResult.ok) {
+        setSaveError(createResult.error);
         return;
       }
 
-      const planId = createData.plan.id;
+      const planId = createResult.data.plan.id;
 
       // 2. Compute costs for all products before saving
       const computedPasses = draft.passes.map((pass, i) => {
@@ -330,9 +357,9 @@ export default function NewPlanPage() {
         }),
       });
 
-      if (!saveRes.ok) {
-        const saveData = await saveRes.json();
-        setSaveError(saveData.error ?? 'Failed to save plan.');
+      const saveResult = await parseJsonResponse(saveRes);
+      if (!saveResult.ok) {
+        setSaveError(saveResult.error);
         return;
       }
 

@@ -183,6 +183,24 @@ describe('POST /api/crop/generate', () => {
     expect(res.status).toBe(422);
   });
 
+  it('should return 422 with an actionable message when the AI response fails to parse', async () => {
+    mockQuery.mockResolvedValue(MOCK_PRODUCTS);
+    mockGenerateFarmerPlan.mockRejectedValue(
+      new Error('Failed to parse AI crop plan response: the response appears to have been cut off before it finished.')
+    );
+
+    const req = createPostRequest('/api/crop/generate', {
+      crop: 'corn',
+      acres: 1000,
+      targetWeeds: ['Waterhemp'],
+      weedPressure: 'moderate',
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(422);
+    const data = await parseJsonResponse(res);
+    expect(data.error).toContain('try again');
+  });
+
   it('should return 500 on unexpected error', async () => {
     mockQuery.mockResolvedValue(MOCK_PRODUCTS);
     mockGenerateFarmerPlan.mockRejectedValue(new Error('Unexpected failure'));

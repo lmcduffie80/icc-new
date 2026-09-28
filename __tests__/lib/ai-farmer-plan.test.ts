@@ -136,14 +136,26 @@ describe('generateFarmerPlan', () => {
     ).rejects.toThrow('No text response from AI');
   });
 
-  it('should throw when AI returns invalid JSON', async () => {
+  it('should throw a descriptive error when AI returns invalid JSON', async () => {
     mockCreate.mockResolvedValue({
       content: [{ type: 'text', text: 'not valid json' }],
     });
 
     await expect(
       generateFarmerPlan('corn', ['Waterhemp'], 'moderate', MOCK_PRODUCTS)
-    ).rejects.toThrow();
+    ).rejects.toThrow('Failed to parse AI crop plan response');
+  });
+
+  it('should surface a truncation-specific error when the response is cut off mid-object', async () => {
+    // Simulates hitting max_tokens before the model finished writing the JSON object
+    const truncated = JSON.stringify(VALID_DRAFT).slice(0, -20);
+    mockCreate.mockResolvedValue({
+      content: [{ type: 'text', text: truncated }],
+    });
+
+    await expect(
+      generateFarmerPlan('corn', ['Waterhemp'], 'moderate', MOCK_PRODUCTS)
+    ).rejects.toThrow('cut off');
   });
 
   it('should throw when AI response is missing passes array', async () => {
