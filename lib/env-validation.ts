@@ -90,6 +90,9 @@ const envSchema = z.object({
   // Browserless.io (optional — remote Chromium for LTL booking in production/Vercel)
   BROWSERLESS_WS_ENDPOINT: z.string().url().optional(),
 
+  // OpenET API (optional — ET data on Soil Intelligence page disabled when not configured)
+  OPENET_API_KEY: z.string().min(1).optional(),
+
   // Node environment
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
 });

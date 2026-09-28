@@ -78,6 +78,33 @@ describe('fetchSoilMoisture', () => {
     expect(global.fetch).toHaveBeenCalledTimes(5);
   });
 
+  it('treats a 200 OK "ServerBusy" exception body as no data (not a parse crash)', async () => {
+    // Some WPS deployments return 200 with an exception body rather than a
+    // non-2xx status when overloaded — make sure we still detect it as
+    // "no usable data" instead of trying to parse mean/median out of it.
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      text: async () =>
+        '<?xml version="1.0"?><ows:ExceptionReport><ows:Exception exceptionCode="ServerBusy"><ows:ExceptionText>Maximum number of parallel running processes reached. Please try later.</ows:ExceptionText></ows:Exception></ows:ExceptionReport>',
+    } as Response);
+
+    const result = await fetchSoilMoisture('22'); // distinct fips
+    expect(result).toBeNull();
+  });
+
+  it('handles many concurrent fips lookups without hanging (concurrency limiter drains correctly)', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      text: async () => "{'median': 0.20, 'mean': 0.21}",
+    } as Response);
+
+    // More than the internal concurrency cap, across distinct fips codes so
+    // none hit the in-memory result cache.
+    const fipsCodes = ['23', '24', '25', '26', '28', '30', '32', '33', '34', '35', '36', '37'];
+    const results = await Promise.all(fipsCodes.map((f) => fetchSoilMoisture(f)));
+    expect(results.every((r) => r?.mean === 0.21)).toBe(true);
+  });
+
   it('caches a successful result in-memory for subsequent calls (no re-fetch)', async () => {
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,

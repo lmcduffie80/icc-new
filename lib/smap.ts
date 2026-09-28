@@ -118,9 +118,47 @@ export const MOISTURE_COLORS: Record<MoistureCondition, { fill: string; hover: s
 
 const SMAP_BASE = 'https://cloud.csiss.gmu.edu/smap_service';
 
+// The Crop-CASMA WPS service is a small, free, unauthenticated academic
+// endpoint with a very low concurrency ceiling — it returns a 400
+// "ServerBusy: Maximum number of parallel running processes reached" error
+// under even light concurrent load, and its own response latency for that
+// error climbs further the harder we hit it (observed: ~1.2-2.4s for a
+// single request vs. ~5s+ when firing many at once). To avoid amplifying
+// that problem — and to avoid one flaky external call holding up an entire
+// page load of up to 48 states — we cap our own global concurrency to this
+// host and use a short per-request timeout so a bad response can't add more
+// than a few seconds to any request that depends on it.
+// High enough that a single state's 5 day-probes never queue behind each
+// other (avoiding compounding their timeouts), while still capping the
+// worst-case burst from the 48-state national map pre-fetch to a fraction
+// of its unbounded 240-request potential.
+const SMAP_MAX_CONCURRENCY = 10;
+const SMAP_REQUEST_TIMEOUT_MS = 3_000;
+let smapActiveRequests = 0;
+const smapWaitQueue: Array<() => void> = [];
+
+function acquireSmapSlot(): Promise<() => void> {
+  return new Promise((resolve) => {
+    const tryAcquire = () => {
+      if (smapActiveRequests < SMAP_MAX_CONCURRENCY) {
+        smapActiveRequests++;
+        resolve(() => {
+          smapActiveRequests--;
+          const next = smapWaitQueue.shift();
+          if (next) next();
+        });
+      } else {
+        smapWaitQueue.push(tryAcquire);
+      }
+    };
+    tryAcquire();
+  });
+}
+
 /**
  * Attempt to fetch SMAP GetStatByFips for a given FIPS and date.
- * Returns null on any failure (bad date, no data, network error).
+ * Returns null on any failure (bad date, no data, network error, or the
+ * upstream service being overloaded).
  */
 async function tryFetchSmapLayer(
   fips: string,
@@ -135,9 +173,10 @@ async function tryFetchSmapLayer(
     DataInputs: `layer=${layer};fips=${fips};minValue=0;maxValue=1;step=0.1`,
   });
 
+  const release = await acquireSmapSlot();
   try {
     const res = await fetch(`${SMAP_BASE}?${params}`, {
-      signal: AbortSignal.timeout(10_000),
+      signal: AbortSignal.timeout(SMAP_REQUEST_TIMEOUT_MS),
       // Cache per (layer, fips) for 30 min via Next's Data Cache. The manual
       // in-memory cache below already covers 1hr within a single serverless
       // instance; this covers cross-instance/cold-start requests for the
@@ -148,6 +187,7 @@ async function tryFetchSmapLayer(
     if (!res.ok) return null;
 
     const text = await res.text();
+    if (text.includes('ServerBusy') || text.includes('ExceptionReport')) return null;
 
     // Response format: {'median': 0.26660872, 'mean': 0.26743}
     const medianMatch = text.match(/'median':\s*([\d.]+)/);
@@ -160,6 +200,8 @@ async function tryFetchSmapLayer(
     return { mean, median: Number.isFinite(median) ? median : mean };
   } catch {
     return null;
+  } finally {
+    release();
   }
 }
 

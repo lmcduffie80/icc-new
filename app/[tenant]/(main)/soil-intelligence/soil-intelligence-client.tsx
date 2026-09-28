@@ -20,6 +20,7 @@ import { USMap } from '@/components/us-map';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { IrrigationHeatmapSection } from '@/components/irrigation/irrigation-heatmap-section';
+import { OpenETSection } from '@/components/irrigation/openet-et-section';
 import type { SoilMoisture, MoistureCondition } from '@/lib/smap';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -577,8 +578,13 @@ export function SoilIntelligenceClient({
           parallel with the soil-conditions fetch rather than waiting for it. */}
       {heatmapLocation && (
         <section className="bg-slate-50 border-b border-border/40 py-10">
-          <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 space-y-6">
             <IrrigationHeatmapSection
+              lat={heatmapLocation.lat}
+              lng={heatmapLocation.lng}
+              locationLabel={heatmapLocation.label}
+            />
+            <OpenETSection
               lat={heatmapLocation.lat}
               lng={heatmapLocation.lng}
               locationLabel={heatmapLocation.label}
@@ -639,7 +645,7 @@ export function SoilIntelligenceClient({
       {/* ─── Data sources + explainer ──────────────────────────────────────── */}
       <section className="border-t border-border/40 bg-slate-50 py-12">
         <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 gap-8 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-4">
             <div>
               <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-blue-100">
                 <Satellite className="h-5 w-5 text-blue-600" />
@@ -668,6 +674,16 @@ export function SoilIntelligenceClient({
               <p className="mt-1 text-sm text-muted-foreground leading-relaxed">
                 Volumetric water content (m³/m³): &lt;0.10 drought · 0.10–0.20 dry · 0.20–0.30 normal ·
                 0.30–0.40 moist · &gt;0.40 saturated.
+              </p>
+            </div>
+            <div>
+              <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-sky-100">
+                <Droplets className="h-5 w-5 text-sky-600" />
+              </div>
+              <h3 className="font-semibold text-slate-900">OpenET Ensemble</h3>
+              <p className="mt-1 text-sm text-muted-foreground leading-relaxed">
+                Satellite-based actual evapotranspiration from the OpenET Ensemble model, combining
+                six independent ET models with Landsat imagery at field scale (~30m resolution).
               </p>
             </div>
           </div>
