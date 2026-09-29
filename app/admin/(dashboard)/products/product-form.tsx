@@ -182,6 +182,11 @@ export function ProductForm({ product }: ProductFormProps) {
   const [sdsUploadError, setSdsUploadError] = useState('');
   const sdsInputRef = useRef<HTMLInputElement>(null);
 
+  // Comparable product AI suggestion state
+  const [comparableSuggestions, setComparableSuggestions] = useState<string[]>([]);
+  const [comparableSuggestionsLoading, setComparableSuggestionsLoading] = useState(false);
+  const [comparableSuggestionsOpen, setComparableSuggestionsOpen] = useState(false);
+
   // NMFC AI suggestion state
   const [nmfcAiSuggestion, setNmfcAiSuggestion] = useState<string | null>(product?.nmfc_ai_suggestion ?? null);
   const [nmfcAiReasoning, setNmfcAiReasoning] = useState<string | null>(product?.nmfc_ai_reasoning ?? null);
@@ -490,6 +495,32 @@ export function ProductForm({ product }: ProductFormProps) {
         setLoadingSuppliers(false);
       });
   }, []);
+
+  const handleSuggestComparable = async () => {
+    if (!formData.name) return;
+    setComparableSuggestionsLoading(true);
+    setComparableSuggestionsOpen(false);
+    try {
+      const res = await fetch('/api/admin/products/suggest-comparable', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: formData.name,
+          category: formData.category || null,
+          description: formData.description || null,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json() as { suggestions: string[] };
+        setComparableSuggestions(data.suggestions ?? []);
+        setComparableSuggestionsOpen(true);
+      }
+    } catch {
+      // Silently fail
+    } finally {
+      setComparableSuggestionsLoading(false);
+    }
+  };
 
   const handleNmfcClassify = async () => {
     if (!formData.name) return;
@@ -1101,17 +1132,65 @@ export function ProductForm({ product }: ProductFormProps) {
 
             {/* Compared To */}
             <div className="md:col-span-2">
-              <label htmlFor="product-compared-to" className="block text-sm font-medium text-slate-700">
-                Compared to
-              </label>
-              <input
-                id="product-compared-to"
-                type="text"
-                value={formData.compared_to}
-                onChange={(e) => setFormData({ ...formData, compared_to: e.target.value })}
-                className="mt-1 w-full rounded-lg border border-slate-200 px-4 py-2 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                placeholder="Name of a comparable or competing product"
-              />
+              <div className="flex items-center justify-between">
+                <label htmlFor="product-compared-to" className="block text-sm font-medium text-slate-700">
+                  Compared to
+                </label>
+                {formData.name && (
+                  <button
+                    type="button"
+                    onClick={handleSuggestComparable}
+                    disabled={comparableSuggestionsLoading}
+                    className="inline-flex items-center gap-1 rounded-lg bg-violet-50 px-2.5 py-1 text-xs font-medium text-violet-700 hover:bg-violet-100 disabled:opacity-50 hover:cursor-pointer"
+                  >
+                    {comparableSuggestionsLoading
+                      ? <><Loader2 className="h-3 w-3 animate-spin" /> Suggesting...</>
+                      : <><Sparkles className="h-3 w-3" /> Suggest with AI</>
+                    }
+                  </button>
+                )}
+              </div>
+              <div className="relative">
+                <input
+                  id="product-compared-to"
+                  type="text"
+                  value={formData.compared_to}
+                  onChange={(e) => setFormData({ ...formData, compared_to: e.target.value })}
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-4 py-2 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  placeholder="Name of a comparable or competing product"
+                />
+                {comparableSuggestionsOpen && comparableSuggestions.length > 0 && (
+                  <div className="absolute left-0 right-0 top-full z-20 mt-1 rounded-lg border border-slate-200 bg-white shadow-lg">
+                    <div className="flex items-center justify-between border-b border-slate-100 px-3 py-2">
+                      <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">AI Suggestions — click to use</span>
+                      <button
+                        type="button"
+                        onClick={() => setComparableSuggestionsOpen(false)}
+                        className="text-slate-400 hover:text-slate-600 hover:cursor-pointer"
+                        aria-label="Close suggestions"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                    <ul className="max-h-52 overflow-y-auto py-1">
+                      {comparableSuggestions.map((suggestion) => (
+                        <li key={suggestion}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setFormData({ ...formData, compared_to: suggestion });
+                              setComparableSuggestionsOpen(false);
+                            }}
+                            className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-violet-50 hover:text-violet-800 hover:cursor-pointer"
+                          >
+                            {suggestion}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
               <p className="mt-1 text-xs text-slate-500">Displayed on the storefront for customer comparison</p>
             </div>
 
