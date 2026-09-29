@@ -306,7 +306,7 @@ export function ProductForm({ product }: ProductFormProps) {
 
   // Label templates
   const [labelTemplates, setLabelTemplates] = useState<LabelTemplate[]>([]);
-  const [selectedTemplate, setSelectedTemplate] = useState<string>('');
+  const [selectedTemplate, setSelectedTemplate] = useState<string>(product?.label_template_id ?? '');
   const [loadingTemplates, setLoadingTemplates] = useState(false);
 
   // Supplier selection for assignment
@@ -460,25 +460,22 @@ export function ProductForm({ product }: ProductFormProps) {
     Array.isArray(product?.documents) ? product.documents : [{ name: '', url: '' }]
   );
 
-  // Fetch label templates when product name changes
+  // Fetch all approved label templates once on mount
   useEffect(() => {
-    if (formData.name && formData.name.length >= 3) {
-      setLoadingTemplates(true);
-      fetch(`/api/admin/label-templates?product_name=${encodeURIComponent(formData.name)}&approval_status=approved`)
-        .then(res => res.json())
-        .then(data => {
-          setLabelTemplates(data.templates || []);
-          setLoadingTemplates(false);
-        })
-        .catch(error => {
-          console.error('Error fetching label templates:', error);
-          setLabelTemplates([]);
-          setLoadingTemplates(false);
-        });
-    } else {
-      setLabelTemplates([]);
-    }
-  }, [formData.name]);
+    setLoadingTemplates(true);
+    fetch('/api/admin/label-templates?approval_status=approved')
+      .then(res => res.json())
+      .then(data => {
+        setLabelTemplates(data.templates || []);
+        setLoadingTemplates(false);
+      })
+      .catch(error => {
+        console.error('Error fetching label templates:', error);
+        setLabelTemplates([]);
+        setLoadingTemplates(false);
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Fetch active suppliers for assignment
   useEffect(() => {
@@ -2308,41 +2305,54 @@ export function ProductForm({ product }: ProductFormProps) {
             <div className="rounded-lg bg-slate-50 p-4">
               <h3 className="text-sm font-medium text-slate-700 mb-4">Descriptions</h3>
 
-              {/* Label Template Selector */}
-              {labelTemplates.length > 0 && (
-                <div className="mb-4">
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                    <label htmlFor="label-template" className="block text-sm font-medium text-slate-700 mb-2">
-                      Use Label Template (Optional)
-                    </label>
-                    <select
-                      id="label-template"
-                      value={selectedTemplate}
-                      onChange={(e) => handleTemplateSelect(e.target.value)}
-                      className="w-full rounded-md border border-slate-300 px-3 py-2 shadow-sm focus:border-green-500 focus:outline-none focus:ring-green-500"
-                    >
-                      <option value="">-- Select a template to auto-fill descriptions --</option>
-                      {labelTemplates.map(template => (
-                        <option key={template.id} value={template.id}>
-                          {template.template_name}
-                        </option>
-                      ))}
-                    </select>
-                    <p className="mt-2 text-xs text-blue-800">
-                      Selecting a template will automatically populate the descriptions and label image below. You can still edit them after selecting.
-                    </p>
-                  </div>
+              {/* Label Template Selector — always visible */}
+              <div className="mb-5 border border-blue-200 bg-blue-50 rounded-lg p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <label htmlFor="label-template" className="block text-sm font-medium text-slate-700">
+                    Label Template
+                  </label>
+                  {loadingTemplates && (
+                    <span className="inline-flex items-center gap-1 text-xs text-slate-500">
+                      <Loader2 className="h-3 w-3 animate-spin" /> Loading…
+                    </span>
+                  )}
                 </div>
-              )}
+                <select
+                  id="label-template"
+                  value={selectedTemplate}
+                  onChange={(e) => handleTemplateSelect(e.target.value)}
+                  disabled={loadingTemplates}
+                  className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-50 hover:cursor-pointer"
+                >
+                  <option value="">— None selected —</option>
+                  {labelTemplates.map(template => (
+                    <option key={template.id} value={template.id}>
+                      {template.template_name}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1.5 text-xs text-blue-700">
+                  Selecting a template auto-fills the descriptions below. You can edit them afterwards.
+                </p>
 
-              {loadingTemplates && formData.name && formData.name.length >= 3 && (
-                <div className="mb-4">
-                  <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 text-center">
-                    <Loader2 className="h-5 w-5 animate-spin text-slate-400 mx-auto" />
-                    <p className="mt-2 text-sm text-slate-600">Loading label templates...</p>
-                  </div>
-                </div>
-              )}
+                {/* Label image preview for selected template */}
+                {selectedTemplate && (() => {
+                  const tpl = labelTemplates.find(t => t.id === selectedTemplate);
+                  return tpl?.label_image_url ? (
+                    <div className="mt-3 flex items-center gap-3">
+                      <img
+                        src={tpl.label_image_url}
+                        alt={tpl.template_name}
+                        className="h-16 w-16 rounded border border-slate-200 object-contain bg-white"
+                      />
+                      <div className="text-xs text-slate-600">
+                        <p className="font-medium">{tpl.template_name}</p>
+                        <p className="text-slate-500">{tpl.product_name}</p>
+                      </div>
+                    </div>
+                  ) : null;
+                })()}
+              </div>
 
               <div className="space-y-4">
                 {/* Short Description */}
