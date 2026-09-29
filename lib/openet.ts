@@ -126,16 +126,26 @@ export async function fetchOpenETTimeseries(
     file_format: 'JSON',
   };
 
-  const res = await fetch(`${OPENET_BASE_URL}/raster/timeseries/point`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: apiKey,
-      accept: 'application/json',
-    },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(20_000),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${OPENET_BASE_URL}/raster/timeseries/point`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: apiKey,
+        accept: 'application/json',
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(45_000), // OpenET ensemble can be slow — allow up to 45s
+    });
+  } catch (err) {
+    // AbortError from the timeout fires as a DOMException with name 'TimeoutError'
+    // in Node.js 20+ / fetch spec. Surface a friendlier message.
+    if (err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError')) {
+      throw new Error('The OpenET service is taking longer than expected. Please try again in a moment.');
+    }
+    throw err;
+  }
 
   if (!res.ok) {
     const text = await res.text().catch(() => '');

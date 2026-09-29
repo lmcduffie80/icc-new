@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { Layers, ChevronRight } from 'lucide-react';
+import { Layers, ChevronRight, Tag } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { PriceWithUnit } from '@/components/ui/price-with-unit';
@@ -11,11 +11,13 @@ import { ProductImage } from '@/components/product-image';
 import type { Product } from '@/lib/products';
 import { formatPrice } from '@/lib/utils';
 import { useTenant } from '@/components/tenant-provider';
+import { useDistributorStatus } from '@/lib/use-distributor-status';
 
 function ShopContent() {
   const tenant = useTenant();
   const searchParams = useSearchParams();
   const categoryParam = searchParams.get('category') || 'all';
+  const { isDistributor } = useDistributorStatus();
 
   const [selectedCategory, setSelectedCategory] = useState(categoryParam);
   const [sortBy, setSortBy] = useState('featured');
@@ -214,6 +216,37 @@ function ShopContent() {
           </div>
         </div>
       </section>
+
+      {/* Distributor Pricing Banner — shown only to approved distributor accounts */}
+      {isDistributor && (
+        <section className="border-b border-sky-200 bg-gradient-to-r from-sky-900 to-indigo-900 py-4">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+              <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-sky-700/60">
+                  <Tag className="h-4 w-4 text-sky-200" />
+                </div>
+                <div>
+                  <p className="font-semibold text-white">Distributor Pricing Available</p>
+                  <p className="text-sm text-sky-200">
+                    You have an approved distributor account — visit your private store to see exclusive pricing.
+                  </p>
+                </div>
+              </div>
+              <Button
+                asChild
+                variant="secondary"
+                className="shrink-0 bg-white text-sky-900 hover:bg-sky-50 hover:cursor-pointer"
+              >
+                <Link href="/distributor">
+                  View Distributor Store
+                  <ChevronRight className="ml-1 h-4 w-4" />
+                </Link>
+              </Button>
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* Filters Section */}
       <section className="border-b border-border/40 bg-background py-6">

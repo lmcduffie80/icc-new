@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
-import { Menu, Search, ShoppingCart, X, User, LogOut } from 'lucide-react';
+import { Menu, Search, ShoppingCart, X, User, LogOut, Tag } from 'lucide-react';
 import { useCartStore } from '@/lib/cart-store';
 import { useSearchShortcut } from '@/components/use-search-shortcut';
 import { SearchOverlay } from '@/components/search-overlay';
@@ -12,6 +12,7 @@ import { Minicart } from '@/components/minicart';
 import { useAuth } from '@/components/auth-provider';
 import { signOut } from '@/lib/auth-client';
 import { accountNavItems } from '@/lib/account-navigation';
+import { useDistributorStatus } from '@/lib/use-distributor-status';
 
 // Nav link slugs (tenant prefix is added at render time via usePathname)
 const NAV_SLUGS = [
@@ -32,6 +33,7 @@ export function Header() {
   const [mounted, setMounted] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const { user } = useAuth();
+  const { isDistributor } = useDistributorStatus();
 
   // Derive tenant slug from the first path segment (e.g. "/icc/shop" → "icc")
   const tenantSlug = pathname.split('/').filter(Boolean)[0] ?? 'icc';
@@ -140,6 +142,19 @@ export function Header() {
                           </Link>
                         ))}
                         <div className="my-1 border-t border-border" />
+                        {isDistributor && (
+                          <>
+                            <Link
+                              href={`/${tenantSlug}/distributor`}
+                              onClick={() => setUserMenuOpen(false)}
+                              className="flex items-center gap-2 rounded px-2 py-1.5 text-sm font-medium text-sky-700 transition-colors hover:bg-sky-50 hover:text-sky-900"
+                            >
+                              <Tag className="h-4 w-4" />
+                              Distributor Store
+                            </Link>
+                            <div className="my-1 border-t border-border" />
+                          </>
+                        )}
                         <button
                           onClick={() => { setUserMenuOpen(false); signOut(); }}
                           className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:cursor-pointer hover:bg-muted hover:text-foreground"
@@ -207,12 +222,24 @@ export function Header() {
             ))}
             <div className="my-2 border-t border-border" />
             {user ? (
-              <button
-                onClick={() => signOut()}
-                className="rounded-md px-3 py-2 text-left text-sm font-medium text-muted-foreground transition-colors hover:cursor-pointer hover:bg-muted hover:text-foreground"
-              >
-                Sign out
-              </button>
+              <>
+                {isDistributor && (
+                  <Link
+                    href={`/${tenantSlug}/distributor`}
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-sky-700 transition-colors hover:bg-sky-50"
+                  >
+                    <Tag className="h-4 w-4" />
+                    Distributor Store
+                  </Link>
+                )}
+                <button
+                  onClick={() => signOut()}
+                  className="rounded-md px-3 py-2 text-left text-sm font-medium text-muted-foreground transition-colors hover:cursor-pointer hover:bg-muted hover:text-foreground"
+                >
+                  Sign out
+                </button>
+              </>
             ) : (
               <Link
                 href="/auth/sign-in"

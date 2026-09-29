@@ -186,9 +186,33 @@ export function OpenETSection({ lat, lng, locationLabel }: OpenETSectionProps) {
         )}
 
         {error && !loading && (
-          <div className="flex h-36 flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border/60 bg-slate-50 text-center text-sm text-muted-foreground">
+          <div className="flex h-36 flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border/60 bg-slate-50 text-center text-sm text-muted-foreground px-4">
             <Info className="h-5 w-5 opacity-40" />
-            <p>{error}</p>
+            <p>
+              {error.toLowerCase().includes('timeout') || error.toLowerCase().includes('taking longer')
+                ? 'The OpenET satellite service is responding slowly right now. Try again in a moment.'
+                : error}
+            </p>
+            <button
+              onClick={() => {
+                setError('');
+                setLoading(true);
+                fetch(`/api/public/openet-et?lat=${lat}&lng=${lng}&months=12&units=in`)
+                  .then(async (res) => {
+                    if (res.status === 503) { setUnavailable(true); return; }
+                    if (!res.ok) {
+                      const j = await res.json().catch(() => ({ error: 'Unknown error' })) as { error?: string };
+                      throw new Error(j.error ?? `HTTP ${res.status}`);
+                    }
+                    setData(await res.json() as ETTimeseries);
+                  })
+                  .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load ET data.'))
+                  .finally(() => setLoading(false));
+              }}
+              className="mt-1 rounded-md border border-border/60 bg-white px-3 py-1 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50 hover:cursor-pointer"
+            >
+              Retry
+            </button>
           </div>
         )}
 
