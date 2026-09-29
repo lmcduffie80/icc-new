@@ -37,6 +37,7 @@ export function DistributorPortalClient() {
   const { user, isPending: authPending } = useAuth();
   const router = useRouter();
   const tenant = useTenant();
+  const tenantSlug = tenant.slug ?? 'icc';
   const addItem = useCartStore((state) => state.addItem);
 
   const [status, setStatus] = useState<'loading' | 'not-auth' | 'not-distributor' | 'ready'>('loading');
@@ -119,39 +120,72 @@ export function DistributorPortalClient() {
 
   if (status === 'not-auth') {
     return (
-      <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 text-center px-4">
-        <div className="rounded-full bg-slate-100 p-4">
-          <Lock className="h-8 w-8 text-slate-500" />
+      <div className="min-h-[70vh] flex items-center justify-center px-4 py-16">
+        <div className="w-full max-w-md">
+          {/* Card */}
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+            {/* Green header bar */}
+            <div className="bg-emerald-600 px-8 py-6 text-center">
+              <div className="inline-flex items-center justify-center rounded-full bg-white/20 p-3 mb-3">
+                <Lock className="h-6 w-6 text-white" />
+              </div>
+              <h1 className="text-xl font-bold text-white">Distributor Portal</h1>
+              <p className="mt-1 text-sm text-emerald-100">
+                Exclusive pricing for authorized distributors
+              </p>
+            </div>
+
+            {/* Body */}
+            <div className="px-8 py-6 space-y-4">
+              <p className="text-sm text-slate-600 text-center">
+                Sign in with your distributor account to access wholesale pricing, place orders,
+                and manage your account.
+              </p>
+              <Button
+                onClick={() => router.push(`/${tenantSlug}/auth/sign-in?redirect=/${tenantSlug}/distributor`)}
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-2.5"
+              >
+                Sign in to Distributor Portal
+              </Button>
+              <div className="text-center">
+                <p className="text-xs text-slate-400">
+                  Don&apos;t have an account?{' '}
+                  <button
+                    onClick={() => router.push('/contact')}
+                    className="text-emerald-600 hover:underline hover:cursor-pointer"
+                  >
+                    Apply for distributor access
+                  </button>
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Reassurance note */}
+          <p className="mt-4 text-center text-xs text-slate-400">
+            Shipping and checkout work the same as your regular account.
+          </p>
         </div>
-        <h2 className="text-xl font-bold text-slate-900">Sign in required</h2>
-        <p className="text-slate-500 max-w-sm">
-          The distributor portal is only available to authorized distributor accounts.
-          Please sign in to continue.
-        </p>
-        <Button
-          onClick={() => router.push('/auth/sign-in?redirect=/distributor')}
-          className="bg-emerald-600 hover:bg-emerald-700 text-white"
-        >
-          Sign in
-        </Button>
       </div>
     );
   }
 
   if (status === 'not-distributor') {
     return (
-      <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 text-center px-4">
-        <div className="rounded-full bg-amber-100 p-4">
-          <Lock className="h-8 w-8 text-amber-600" />
+      <div className="min-h-[70vh] flex items-center justify-center px-4 py-16">
+        <div className="w-full max-w-md text-center space-y-4">
+          <div className="inline-flex items-center justify-center rounded-full bg-amber-100 p-4">
+            <Lock className="h-8 w-8 text-amber-600" />
+          </div>
+          <h2 className="text-xl font-bold text-slate-900">Distributor access required</h2>
+          <p className="text-slate-500 max-w-sm mx-auto text-sm">
+            Your account doesn&apos;t have distributor access yet. Please contact us to apply
+            for a distributor account.
+          </p>
+          <Button variant="outline" onClick={() => router.push('/contact')}>
+            Contact Us
+          </Button>
         </div>
-        <h2 className="text-xl font-bold text-slate-900">Distributor access required</h2>
-        <p className="text-slate-500 max-w-sm">
-          Your account doesn&apos;t have distributor access yet. Please contact us to apply
-          for a distributor account.
-        </p>
-        <Button variant="outline" onClick={() => router.push('/contact')}>
-          Contact Us
-        </Button>
       </div>
     );
   }

@@ -17,13 +17,11 @@ import { accountNavItems } from '@/lib/account-navigation';
 const NAV_SLUGS = [
   { slug: 'about',            label: 'About'         },
   { slug: 'shop',             label: 'Shop'          },
+  { slug: 'distributor',      label: 'Distributor'   },
   { slug: 'crop',             label: 'Crop Planning' },
   { slug: 'soil-intelligence',label: 'Soil Intel'    },
   { slug: 'contact',          label: 'Contact'       },
 ];
-
-// Distributor nav link — injected only for distributor users
-const DISTRIBUTOR_SLUG = { slug: 'distributor', label: 'Distributor Pricing' };
 
 export function Header() {
   const pathname = usePathname();
@@ -33,20 +31,11 @@ export function Header() {
   const [cartOpen, setCartOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const [isDistributor, setIsDistributor] = useState(false);
   const { user } = useAuth();
 
   // Derive tenant slug from the first path segment (e.g. "/icc/shop" → "icc")
   const tenantSlug = pathname.split('/').filter(Boolean)[0] ?? 'icc';
-  const baseLinks = NAV_SLUGS.map((n) => ({ href: `/${tenantSlug}/${n.slug}`, label: n.label }));
-  // Insert "Distributor Pricing" after "Shop" (index 1) when the user is a distributor
-  const navLinks = isDistributor
-    ? [
-        ...baseLinks.slice(0, 2),
-        { href: `/${tenantSlug}/${DISTRIBUTOR_SLUG.slug}`, label: DISTRIBUTOR_SLUG.label },
-        ...baseLinks.slice(2),
-      ]
-    : baseLinks;
+  const navLinks = NAV_SLUGS.map((n) => ({ href: `/${tenantSlug}/${n.slug}`, label: n.label }));
   const { getTotalItems } = useCartStore();
   const totalItems = getTotalItems();
 
@@ -54,14 +43,6 @@ export function Header() {
     setMounted(true);
   }, []);
 
-  // Check distributor status once the user is known
-  useEffect(() => {
-    if (!user) { setIsDistributor(false); return; }
-    fetch('/api/distributor/status')
-      .then((r) => r.json())
-      .then((d) => setIsDistributor(d.isDistributor === true))
-      .catch(() => setIsDistributor(false));
-  }, [user]);
 
   useEffect(() => {
     if (!userMenuOpen) return;
@@ -97,24 +78,13 @@ export function Header() {
             {/* Desktop Nav */}
             <nav className="hidden items-center gap-6 md:flex">
               {navLinks.map((link) => (
-                link.label === DISTRIBUTOR_SLUG.label ? (
-                  <Link
-                    key={link.href}
-                    href={link.href}
-                    className="flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-700 ring-1 ring-emerald-200 transition-colors hover:bg-emerald-100"
-                  >
-                    <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                    {link.label}
-                  </Link>
-                ) : (
-                  <Link
-                    key={link.href}
-                    href={link.href}
-                    className="text-sm text-muted-foreground transition-colors hover:text-foreground"
-                  >
-                    {link.label}
-                  </Link>
-                )
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  {link.label}
+                </Link>
               ))}
             </nav>
 
@@ -226,26 +196,14 @@ export function Header() {
           </div>
           <nav className="flex flex-col gap-1 px-4 py-4">
             {navLinks.map((link) => (
-              link.label === DISTRIBUTOR_SLUG.label ? (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="flex items-center gap-2 rounded-md bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700 ring-1 ring-emerald-200 transition-colors hover:bg-emerald-100"
-                >
-                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                  {link.label}
-                </Link>
-              ) : (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                >
-                  {link.label}
-                </Link>
-              )
+              <Link
+                key={link.href}
+                href={link.href}
+                onClick={() => setMobileMenuOpen(false)}
+                className="rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              >
+                {link.label}
+              </Link>
             ))}
             <div className="my-2 border-t border-border" />
             {user ? (
