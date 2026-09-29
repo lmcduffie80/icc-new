@@ -322,12 +322,13 @@ export async function POST(request: NextRequest) {
     }));
 
     // Server-side order validation (verify items still match prices and state eligibility)
-    // validateOrder only validates item prices (subtotal), not delivery/tax
+    // Pass userId so distributor pricing is enforced server-side
     const orderValidation = await validateOrder(
       pool,
       orderItems,
       subtotal,
-      shippingAddress.state
+      shippingAddress.state,
+      session.user.id
     );
     
     if (!orderValidation.valid) {

@@ -217,7 +217,8 @@ export async function POST(request: NextRequest) {
     const clientSubtotal = validation.data.amount - deliveryFee - tax;
 
     // Server-side order validation (price verification)
-    const orderValidation = await validateOrder(pool, orderItems, clientSubtotal, state);
+    // Pass userId so distributor pricing is enforced when Stripe intent is created
+    const orderValidation = await validateOrder(pool, orderItems, clientSubtotal, state, session.user.id);
     
     // Only fail on actual errors (not inventory warnings - we allow partial fulfillment)
     const actualErrors = orderValidation.errors.filter(error => 
