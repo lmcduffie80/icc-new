@@ -9,6 +9,11 @@ interface DistributorUser {
   customer_number: string | null;
   is_distributor: boolean;
   distributor_notes: string | null;
+  distributor_company_name: string | null;
+  distributor_ein: string | null;
+  distributor_w9_url: string | null;
+  distributor_w9_filename: string | null;
+  distributor_w9_uploaded_at: string | null;
   distributor_approved_at: string | null;
   distributor_approved_by: string | null;
   created_at: string;
@@ -45,6 +50,11 @@ export async function GET(request: NextRequest) {
        up.customer_number,
        COALESCE(up.is_distributor, false) AS is_distributor,
        up.distributor_notes,
+       up.distributor_company_name,
+       up.distributor_ein,
+       up.distributor_w9_url,
+       up.distributor_w9_filename,
+       up.distributor_w9_uploaded_at,
        up.distributor_approved_at,
        up.distributor_approved_by,
        u."createdAt" AS created_at

@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/admin-auth';
 import { query, queryOne } from '@/lib/db';
 import { z } from 'zod';
-import bcrypt from 'bcryptjs';
 import { randomUUID } from 'crypto';
 
 interface User {
@@ -79,7 +78,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'An account with this email already exists' }, { status: 409 });
   }
 
-  const passwordHash = await bcrypt.hash(password, 12);
+  // Use Better Auth's scrypt hasher so the hash is verifiable by Better Auth sign-in
+  const { hashPassword } = await import('better-auth/crypto');
+  const passwordHash = await hashPassword(password);
   const userId = randomUUID();
   const now = new Date().toISOString();
 

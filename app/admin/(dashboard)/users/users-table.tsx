@@ -29,7 +29,7 @@ export function UsersTable({ users, permissions }: UsersTableProps) {
   const router = useRouter();
   const [processing, setProcessing] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [createForm, setCreateForm] = useState({ name: '', email: '', password: '' });
+  const [createForm, setCreateForm] = useState({ name: '', email: '', password: '', isDistributor: false, companyName: '', ein: '' });
   const [createError, setCreateError] = useState('');
   const [creating, setCreating] = useState(false);
 
@@ -44,15 +44,33 @@ export function UsersTable({ users, permissions }: UsersTableProps) {
       const res = await fetch('/api/admin/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(createForm),
+        body: JSON.stringify({
+          name: createForm.name,
+          email: createForm.email,
+          password: createForm.password,
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
         setCreateError(data.error || 'Failed to create user');
         return;
       }
+
+      // If distributor access was requested, grant it with company details
+      if (createForm.isDistributor && data.id) {
+        await fetch(`/api/admin/distributors/${data.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            is_distributor: true,
+            distributor_company_name: createForm.companyName || null,
+            distributor_ein: createForm.ein || null,
+          }),
+        });
+      }
+
       setShowCreateModal(false);
-      setCreateForm({ name: '', email: '', password: '' });
+      setCreateForm({ name: '', email: '', password: '', isDistributor: false, companyName: '', ein: '' });
       router.refresh();
     } catch {
       setCreateError('Failed to create user');
@@ -193,7 +211,7 @@ export function UsersTable({ users, permissions }: UsersTableProps) {
       {canCreate && (
         <div className="mb-4 flex justify-end">
           <button
-            onClick={() => { setShowCreateModal(true); setCreateError(''); }}
+              onClick={() => { setShowCreateModal(true); setCreateError(''); setCreateForm({ name: '', email: '', password: '', isDistributor: false, companyName: '', ein: '' }); }}
             className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90 hover:cursor-pointer"
           >
             <UserPlus className="h-4 w-4" />
@@ -259,6 +277,62 @@ export function UsersTable({ users, permissions }: UsersTableProps) {
                   placeholder="Min. 6 characters"
                 />
               </div>
+              {/* Account type */}
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-3">
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={createForm.isDistributor}
+                    onChange={(e) => setCreateForm(f => ({ ...f, isDistributor: e.target.checked }))}
+                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary"
+                  />
+                  <div>
+                    <p className="text-sm font-medium text-slate-700">Grant distributor access</p>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      This user will see discounted pricing in the Distributor portal and can purchase at wholesale rates.
+                    </p>
+                  </div>
+                </label>
+
+                {/* Company details — shown only when distributor is checked */}
+                {createForm.isDistributor && (
+                  <div className="grid grid-cols-1 gap-3 pt-1 border-t border-slate-200 sm:grid-cols-2">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">
+                        Company Name
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Acme Distributors LLC"
+                        value={createForm.companyName}
+                        onChange={(e) => setCreateForm(f => ({ ...f, companyName: e.target.value }))}
+                        className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">
+                        EIN Number
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="XX-XXXXXXX"
+                        value={createForm.ein}
+                        maxLength={10}
+                        onChange={(e) => {
+                          let val = e.target.value.replace(/[^0-9]/g, '');
+                          if (val.length > 2) val = val.slice(0, 2) + '-' + val.slice(2, 9);
+                          setCreateForm(f => ({ ...f, ein: val }));
+                        }}
+                        className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      />
+                    </div>
+                    <p className="text-xs text-slate-400 sm:col-span-2">
+                      You can upload the W9 document from the Distributors page after saving.
+                    </p>
+                  </div>
+                )}
+              </div>
+
               {createError && (
                 <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{createError}</p>
               )}
@@ -278,7 +352,7 @@ export function UsersTable({ users, permissions }: UsersTableProps) {
                   disabled={creating}
                   className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90 disabled:opacity-50 hover:cursor-pointer"
                 >
-                  {creating ? 'Creating...' : 'Create Account'}
+                  {creating ? 'Creating...' : createForm.isDistributor ? 'Create Distributor Account' : 'Create Account'}
                 </button>
               </div>
             </form>
