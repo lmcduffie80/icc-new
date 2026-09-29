@@ -27,6 +27,7 @@ import {
   FileSignature,
   Layers,
   Sprout,
+  Store,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
@@ -188,6 +189,12 @@ const navGroups: NavGroup[] = [
         href: '/admin/partners/contracts',
         icon: <FileText className="h-5 w-5" />,
         permission: 'admins.view',
+      },
+      {
+        label: 'Distributors',
+        href: '/admin/distributors',
+        icon: <Store className="h-5 w-5" />,
+        permission: 'distributors.view',
       },
     ],
   },

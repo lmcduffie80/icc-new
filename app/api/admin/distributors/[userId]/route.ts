@@ -1,0 +1,70 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { requireAdmin } from '@/lib/admin-auth';
+import { queryOne, query } from '@/lib/db';
+import { z } from 'zod';
+import { securityLogger } from '@/lib/security-logger';
+import { getClientIp } from '@/lib/rate-limit';
+
+const updateSchema = z.object({
+  is_distributor: z.boolean(),
+  distributor_notes: z.string().max(1000).optional().nullable(),
+});
+
+// PATCH /api/admin/distributors/[userId] — grant or revoke distributor status
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ userId: string }> }
+) {
+  const auth = await requireAdmin('distributors.manage');
+  if (auth.error) return auth.error;
+
+  const { userId } = await params;
+  const ip = getClientIp(request);
+
+  const body = await request.json();
+  const result = updateSchema.safeParse(body);
+  if (!result.success) {
+    return NextResponse.json({ error: 'Validation failed', details: result.error.issues }, { status: 400 });
+  }
+
+  const { is_distributor, distributor_notes } = result.data;
+
+  // Ensure user exists
+  const user = await queryOne<{ id: string; email: string }>(
+    `SELECT id, email FROM "user" WHERE id = $1`,
+    [userId]
+  );
+  if (!user) {
+    return NextResponse.json({ error: 'User not found' }, { status: 404 });
+  }
+
+  // Upsert user_profiles row (may not exist for very old accounts)
+  await query(
+    `INSERT INTO user_profiles (user_id, is_distributor, distributor_notes, distributor_approved_at, distributor_approved_by)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (user_id) DO UPDATE SET
+       is_distributor = EXCLUDED.is_distributor,
+       distributor_notes = EXCLUDED.distributor_notes,
+       distributor_approved_at = CASE WHEN EXCLUDED.is_distributor THEN NOW() ELSE NULL END,
+       distributor_approved_by = CASE WHEN EXCLUDED.is_distributor THEN $5 ELSE NULL END,
+       updated_at = NOW()`,
+    [
+      userId,
+      is_distributor,
+      distributor_notes ?? null,
+      is_distributor ? new Date().toISOString() : null,
+      is_distributor ? auth.session.user.id : null,
+    ]
+  );
+
+  securityLogger.logAdminAction(
+    auth.session.user.id,
+    auth.session.user.name,
+    is_distributor ? 'grant_distributor' : 'revoke_distributor',
+    userId,
+    ip,
+    { email: user.email }
+  );
+
+  return NextResponse.json({ success: true, is_distributor });
+}

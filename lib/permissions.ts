@@ -80,6 +80,10 @@ export const PERMISSIONS = {
   'acrepack.view': 'View Crop Planning programs',
   'acrepack.manage_programs': 'Create, edit, and delete Crop Planning programs and passes',
   'acrepack.manage_products': 'Assign and configure products in Crop Planning passes',
+
+  // Distributors
+  'distributors.view': 'View distributor accounts',
+  'distributors.manage': 'Grant/revoke distributor access and manage distributor pricing',
 } as const;
 
 export type Permission = keyof typeof PERMISSIONS;
@@ -201,6 +205,13 @@ export const PERMISSION_CATEGORIES = {
       'acrepack.view',
       'acrepack.manage_programs',
       'acrepack.manage_products',
+    ] as Permission[],
+  },
+  distributors: {
+    label: 'Distributors',
+    permissions: [
+      'distributors.view',
+      'distributors.manage',
     ] as Permission[],
   },
 } as const;

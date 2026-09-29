@@ -41,7 +41,7 @@ interface OrderValidationResult {
 
 /**
  * Validate order items against database
- * - Recalculate prices from database
+ * - Recalculate prices from database (uses distributor pricing when userId is a distributor)
  * - Check inventory availability
  * - Detect price manipulation
  * - Validate state eligibility (if shippingState provided)
@@ -50,7 +50,8 @@ export async function validateOrder(
   db: Pool,
   items: OrderItem[],
   clientTotal: number,
-  shippingState?: string
+  shippingState?: string,
+  userId?: string
 ): Promise<OrderValidationResult> {
   const errors: string[] = [];
   const warnings: string[] = [];
@@ -59,6 +60,35 @@ export async function validateOrder(
   let serverTotal = 0;
   let inventoryIssues = false;
   let hasRestrictedProducts = false;
+
+  // Determine if the ordering user is a distributor (server-side check, never trust client)
+  let isDistributor = false;
+  let distributorPricingMap: Map<string, { price_override: number | null; discount_percent: number | null }> = new Map();
+
+  if (userId) {
+    const profileResult = await db.query(
+      `SELECT COALESCE(up.is_distributor, false) AS is_distributor
+       FROM user_profiles up WHERE up.user_id = $1`,
+      [userId]
+    );
+    isDistributor = profileResult.rows[0]?.is_distributor ?? false;
+
+    if (isDistributor && items.length > 0) {
+      const productIds = items.map((i) => i.productId);
+      const pricingResult = await db.query(
+        `SELECT product_id, price_override, discount_percent
+         FROM distributor_pricing
+         WHERE product_id = ANY($1)`,
+        [productIds]
+      );
+      for (const row of pricingResult.rows) {
+        distributorPricingMap.set(row.product_id, {
+          price_override: row.price_override != null ? parseFloat(row.price_override) : null,
+          discount_percent: row.discount_percent != null ? parseFloat(row.discount_percent) : null,
+        });
+      }
+    }
+  }
 
   // Calculate total quantity for mixed tote order exception
   const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
@@ -141,8 +171,21 @@ export async function validateOrder(
         );
       }
 
-      // Check price match
-      const actualPrice = parseFloat(product.price);
+      // Determine authoritative price: distributor pricing takes precedence for distributor users
+      const retailPrice = parseFloat(product.price);
+      let actualPrice = retailPrice;
+
+      if (isDistributor) {
+        const dp = distributorPricingMap.get(item.productId);
+        if (dp) {
+          if (dp.price_override != null) {
+            actualPrice = dp.price_override;
+          } else if (dp.discount_percent != null) {
+            actualPrice = Math.round(retailPrice * (1 - dp.discount_percent / 100) * 100) / 100;
+          }
+        }
+      }
+
       const priceMatch = Math.abs(actualPrice - item.price) < 0.01; // Allow 1 cent difference for rounding
       
       if (!priceMatch) {
