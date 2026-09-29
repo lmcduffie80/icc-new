@@ -206,6 +206,19 @@ vi.mock('next/navigation', () => ({
   redirect: vi.fn(),
 }));
 
+// Mock sharp — native bindings load at import time and hang/fail in test workers
+vi.mock('sharp', () => {
+  const chain = {
+    metadata: vi.fn().mockResolvedValue({ width: 100, height: 100, format: 'jpeg' }),
+    resize: vi.fn().mockReturnThis(),
+    jpeg: vi.fn().mockReturnThis(),
+    webp: vi.fn().mockReturnThis(),
+    toBuffer: vi.fn().mockResolvedValue(Buffer.from('mock-image')),
+  };
+  const sharp = vi.fn(() => chain);
+  return { default: sharp };
+});
+
 // Mock AWS SDK to prevent connection attempts
 vi.mock('@aws-sdk/client-s3', () => {
   class MockS3Client {
