@@ -106,6 +106,14 @@ export function IrrigationHeatmapSection({ lat, lng, locationLabel }: Irrigation
               evapotranspiration. This is a planning aid, not a substitute for in-field soil
               moisture sensors.
             </p>
+            <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
+              <strong className="font-medium text-slate-600">Why this may look more urgent than the National Soil Moisture Map:</strong>{' '}
+              The national map shows raw satellite-measured water content (VWC) averaged across
+              your entire state. This local map also factors in <em>evapotranspiration demand</em> —
+              how fast your crop is losing water to heat and sun. Even when soil holds moderate
+              moisture, a large ET deficit (common in hot, sunny conditions) can push the local
+              rating to &ldquo;Irrigate Now&rdquo; while the national map still reads orange or green.
+            </p>
           </>
         )}
       </CardContent>

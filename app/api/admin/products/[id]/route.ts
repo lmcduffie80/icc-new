@@ -78,6 +78,7 @@ interface Product {
   gallons_per_case?: number | null;
   cases_per_pallet?: number | null;
   bulk_density_lbs_per_gallon?: number | null;
+  icc_available_quantity?: number | null;
 }
 
 interface SupplierUser {
@@ -226,7 +227,7 @@ export async function PUT(
               customer_margin_percent, customer_margin_amount,
               margin_approval_status, margin_approved_at, margin_approved_by, margin_notes,
               carton_length, carton_width, carton_height, carton_weight_lbs,
-              truckload_eligible,
+              truckload_eligible, icc_available_quantity,
               created_at, updated_at
        FROM products WHERE id = $1 AND deleted_at IS NULL`, 
       [id]
@@ -291,42 +292,33 @@ export async function PUT(
       }
     }
 
-    // Check if product has any warehouse entries
-    const warehouseCount = await queryOne<{ count: string }>(
-      `SELECT COUNT(*) as count FROM product_warehouses WHERE product_id = $1`,
+    // Fetch warehouse count + total in a single query instead of two round-trips
+    const warehouseStats = await queryOne<{ count: string; total: string }>(
+      `SELECT COUNT(*) as count, COALESCE(SUM(inventory_count), 0) as total
+       FROM product_warehouses WHERE product_id = $1`,
       [id]
     );
-    const hasWarehouseEntries = warehouseCount && parseInt(warehouseCount.count || '0', 10) > 0;
-    
+    const hasWarehouseEntries = warehouseStats ? parseInt(warehouseStats.count || '0', 10) > 0 : false;
+
     // If warehouses exist, inventory_count MUST be the sum of warehouse inventories (no manual override)
     // If no warehouses, use the provided inventory_count or keep existing
     let finalInventoryCount: number;
     let inventoryToCheck: number;
-    
+
     if (hasWarehouseEntries) {
-      // Sync from warehouses - ignore any manually provided inventory_count
-      const warehouseTotal = await queryOne<{ total: string }>(
-        `SELECT COALESCE(SUM(inventory_count), 0) as total
-         FROM product_warehouses
-         WHERE product_id = $1`,
-        [id]
-      );
-      finalInventoryCount = warehouseTotal ? parseInt(warehouseTotal.total || '0', 10) : 0;
+      finalInventoryCount = warehouseStats ? parseInt(warehouseStats.total || '0', 10) : 0;
       inventoryToCheck = finalInventoryCount;
     } else {
       // No warehouses - use provided value or keep existing
       finalInventoryCount = inventory_count !== undefined ? inventory_count : existingProduct.inventory_count;
       inventoryToCheck = finalInventoryCount || 0;
     }
-    
-    // For supplier products, also consider icc_available_quantity
+
+    // For supplier products, also consider icc_available_quantity.
+    // icc_available_quantity was already fetched in the initial SELECT above — no extra query needed.
     let finalInStock = inventoryToCheck > 0;
     if (existingProduct.supplier_id) {
-      const supplierProduct = await queryOne<{ icc_available_quantity: number | null }>(
-        'SELECT icc_available_quantity FROM products WHERE id = $1',
-        [id]
-      );
-      const iccQty = supplierProduct?.icc_available_quantity || 0;
+      const iccQty = existingProduct.icc_available_quantity || 0;
       finalInStock = inventoryToCheck > 0 || iccQty > 0;
     }
 
@@ -885,23 +877,18 @@ export async function PATCH(
     }
 
     // Handle inventory update
-    const warehouseCount = await queryOne<{ count: string }>(
-      `SELECT COUNT(*) as count FROM product_warehouses WHERE product_id = $1`,
+    const warehouseStats = await queryOne<{ count: string; total: string }>(
+      `SELECT COUNT(*) as count, COALESCE(SUM(inventory_count), 0) as total
+       FROM product_warehouses WHERE product_id = $1`,
       [id]
     );
-    const hasWarehouseEntries = warehouseCount && parseInt(warehouseCount.count || '0', 10) > 0;
+    const hasWarehouseEntries = warehouseStats ? parseInt(warehouseStats.count || '0', 10) > 0 : false;
 
     let finalInventoryCount: number;
     let inventoryToCheck: number;
 
     if (hasWarehouseEntries) {
-      const warehouseTotal = await queryOne<{ total: string }>(
-        `SELECT COALESCE(SUM(inventory_count), 0) as total
-         FROM product_warehouses
-         WHERE product_id = $1`,
-        [id]
-      );
-      finalInventoryCount = warehouseTotal ? parseInt(warehouseTotal.total || '0', 10) : 0;
+      finalInventoryCount = warehouseStats ? parseInt(warehouseStats.total || '0', 10) : 0;
       inventoryToCheck = finalInventoryCount;
     } else {
       finalInventoryCount = inventory_count !== undefined ? inventory_count : existingProduct.inventory_count;
@@ -910,11 +897,7 @@ export async function PATCH(
 
     let finalInStock = inventoryToCheck > 0;
     if (existingProduct.supplier_id) {
-      const supplierProduct = await queryOne<{ icc_available_quantity: number | null }>(
-        'SELECT icc_available_quantity FROM products WHERE id = $1',
-        [id]
-      );
-      const iccQty = supplierProduct?.icc_available_quantity || 0;
+      const iccQty = existingProduct.icc_available_quantity || 0;
       finalInStock = inventoryToCheck > 0 || iccQty > 0;
     }
 
