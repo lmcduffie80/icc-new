@@ -2036,75 +2036,6 @@ export function ProductForm({ product }: ProductFormProps) {
               </div>
             )}
 
-            {/* Label Template Selector */}
-            {labelTemplates.length > 0 && (
-              <div className="md:col-span-2">
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                  <label htmlFor="label-template" className="block text-sm font-medium text-slate-700 mb-2">
-                    Use Label Template (Optional)
-                  </label>
-                  <select
-                    id="label-template"
-                    value={selectedTemplate}
-                    onChange={(e) => handleTemplateSelect(e.target.value)}
-                    className="w-full rounded-md border border-slate-300 px-3 py-2 shadow-sm focus:border-green-500 focus:outline-none focus:ring-green-500"
-                  >
-                    <option value="">-- Select a template to auto-fill descriptions --</option>
-                    {labelTemplates.map(template => (
-                      <option key={template.id} value={template.id}>
-                        {template.template_name}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="mt-2 text-xs text-blue-800">
-                    Selecting a template will automatically populate the descriptions and label image below. You can still edit them after selecting.
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {loadingTemplates && formData.name && formData.name.length >= 3 && (
-              <div className="md:col-span-2">
-                <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 text-center">
-                  <Loader2 className="h-5 w-5 animate-spin text-slate-400 mx-auto" />
-                  <p className="mt-2 text-sm text-slate-600">Loading label templates...</p>
-                </div>
-              </div>
-            )}
-
-            {/* Short Description */}
-            <div className="md:col-span-2">
-              <label htmlFor="product-short-desc" className="block text-sm font-medium text-slate-700">
-                Short Description
-              </label>
-              <textarea
-                id="product-short-desc"
-                rows={2}
-                value={formData.description}
-                onChange={(e) =>
-                  setFormData({ ...formData, description: e.target.value })
-                }
-                className="mt-1 w-full rounded-lg border border-slate-200 px-4 py-2 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                placeholder="Brief product description for listings..."
-              />
-            </div>
-
-            {/* Full Description */}
-            <div className="md:col-span-2">
-              <label htmlFor="product-full-desc" className="block text-sm font-medium text-slate-700">
-                Full Description
-              </label>
-              <textarea
-                id="product-full-desc"
-                rows={4}
-                value={formData.full_description}
-                onChange={(e) =>
-                  setFormData({ ...formData, full_description: e.target.value })
-                }
-                className="mt-1 w-full rounded-lg border border-slate-200 px-4 py-2 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                placeholder="Detailed product description for the product page..."
-              />
-            </div>
           </div>
         )}
 
@@ -2373,6 +2304,83 @@ export function ProductForm({ product }: ProductFormProps) {
         {/* Features & Documents Tab */}
         {activeTab === 'content' && (
           <div className="space-y-6">
+            {/* Descriptions */}
+            <div className="rounded-lg bg-slate-50 p-4">
+              <h3 className="text-sm font-medium text-slate-700 mb-4">Descriptions</h3>
+
+              {/* Label Template Selector */}
+              {labelTemplates.length > 0 && (
+                <div className="mb-4">
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <label htmlFor="label-template" className="block text-sm font-medium text-slate-700 mb-2">
+                      Use Label Template (Optional)
+                    </label>
+                    <select
+                      id="label-template"
+                      value={selectedTemplate}
+                      onChange={(e) => handleTemplateSelect(e.target.value)}
+                      className="w-full rounded-md border border-slate-300 px-3 py-2 shadow-sm focus:border-green-500 focus:outline-none focus:ring-green-500"
+                    >
+                      <option value="">-- Select a template to auto-fill descriptions --</option>
+                      {labelTemplates.map(template => (
+                        <option key={template.id} value={template.id}>
+                          {template.template_name}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="mt-2 text-xs text-blue-800">
+                      Selecting a template will automatically populate the descriptions and label image below. You can still edit them after selecting.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {loadingTemplates && formData.name && formData.name.length >= 3 && (
+                <div className="mb-4">
+                  <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 text-center">
+                    <Loader2 className="h-5 w-5 animate-spin text-slate-400 mx-auto" />
+                    <p className="mt-2 text-sm text-slate-600">Loading label templates...</p>
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-4">
+                {/* Short Description */}
+                <div>
+                  <label htmlFor="product-short-desc" className="block text-sm font-medium text-slate-700">
+                    Short Description
+                  </label>
+                  <textarea
+                    id="product-short-desc"
+                    rows={2}
+                    value={formData.description}
+                    onChange={(e) =>
+                      setFormData({ ...formData, description: e.target.value })
+                    }
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-4 py-2 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    placeholder="Brief product description for listings..."
+                  />
+                </div>
+
+                {/* Full Description */}
+                <div>
+                  <label htmlFor="product-full-desc" className="block text-sm font-medium text-slate-700">
+                    Full Description
+                  </label>
+                  <textarea
+                    id="product-full-desc"
+                    rows={4}
+                    value={formData.full_description}
+                    onChange={(e) =>
+                      setFormData({ ...formData, full_description: e.target.value })
+                    }
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-4 py-2 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    placeholder="Detailed product description for the product page..."
+                  />
+                </div>
+              </div>
+            </div>
+
             {/* Features */}
             <div className="rounded-lg bg-slate-50 p-4">
               <div className="flex items-center justify-between mb-4">
