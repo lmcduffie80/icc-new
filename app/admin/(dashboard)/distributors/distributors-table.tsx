@@ -137,6 +137,8 @@ export function DistributorsTable() {
             : data.error ?? `Failed to update distributor access (${res.status})`
         );
       }
+    } catch {
+      setActionError('Network error — could not reach the server. Make sure the dev server is running.');
     } finally {
       setSaving(null);
     }
