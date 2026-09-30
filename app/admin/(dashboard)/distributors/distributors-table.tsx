@@ -37,6 +37,7 @@ export function DistributorsTable() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadTargetId, setUploadTargetId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
@@ -72,6 +73,7 @@ export function DistributorsTable() {
 
   const saveProfile = async (user: DistributorUser) => {
     setSaving(user.user_id);
+    setActionError(null);
     const edit = getEdit(user);
     try {
       const res = await fetch(`/api/admin/distributors/${user.user_id}`, {
@@ -97,6 +99,9 @@ export function DistributorsTable() {
               : u
           )
         );
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setActionError(data.error ?? `Failed to save profile (${res.status})`);
       }
     } finally {
       setSaving(null);
@@ -105,6 +110,7 @@ export function DistributorsTable() {
 
   const toggleDistributor = async (user: DistributorUser) => {
     setSaving(user.user_id);
+    setActionError(null);
     const edit = getEdit(user);
     try {
       const res = await fetch(`/api/admin/distributors/${user.user_id}`, {
@@ -122,6 +128,13 @@ export function DistributorsTable() {
           prev.map((u) =>
             u.user_id === user.user_id ? { ...u, is_distributor: !u.is_distributor } : u
           )
+        );
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setActionError(
+          res.status === 401
+            ? 'Your admin session has expired. Please sign out and sign back in, then try again.'
+            : data.error ?? `Failed to update distributor access (${res.status})`
         );
       }
     } finally {
@@ -176,6 +189,14 @@ export function DistributorsTable() {
           e.target.value = '';
         }}
       />
+
+      {/* Action error banner */}
+      {actionError && (
+        <div className="flex items-start justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <span>{actionError}</span>
+          <button onClick={() => setActionError(null)} className="shrink-0 text-red-400 hover:text-red-600">✕</button>
+        </div>
+      )}
 
       {/* Toolbar */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

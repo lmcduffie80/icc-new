@@ -58,7 +58,7 @@ export function UsersTable({ users, permissions }: UsersTableProps) {
 
       // If distributor access was requested, grant it with company details
       if (createForm.isDistributor && data.id) {
-        await fetch(`/api/admin/distributors/${data.id}`, {
+        const distRes = await fetch(`/api/admin/distributors/${data.id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -67,6 +67,16 @@ export function UsersTable({ users, permissions }: UsersTableProps) {
             distributor_ein: createForm.ein || null,
           }),
         });
+        if (!distRes.ok) {
+          const distData = await distRes.json().catch(() => ({}));
+          // Account was created — warn but don't block. Admin can grant access from Distributors page.
+          console.warn('Distributor access could not be granted automatically:', distData);
+          setCreateError(
+            `Account created, but distributor access could not be granted (${distData.error ?? 'unknown error'}). Go to Partners → Distributors to grant access manually.`
+          );
+          router.refresh();
+          return;
+        }
       }
 
       setShowCreateModal(false);
@@ -334,7 +344,7 @@ export function UsersTable({ users, permissions }: UsersTableProps) {
               </div>
 
               {createError && (
-                <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{createError}</p>
+                <p className={`rounded-lg px-3 py-2 text-sm ${createError.startsWith('Account created') ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-600'}`}>{createError}</p>
               )}
               <p className="text-xs text-slate-500">
                 This account will be pre-verified and ready to log in immediately. The user can reset their password from the sign-in page.
