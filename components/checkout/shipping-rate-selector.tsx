@@ -159,7 +159,11 @@ export function ShippingRateSelector({
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-muted-foreground mt-0.5">{rate.transitDays}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                      {rate.transitDays && rate.transitDays !== 'Estimated delivery varies'
+                        ? `Est. delivery: ${rate.transitDays}`
+                        : rate.transitDays}
+                    </p>
                 </div>
               </div>
               <div className="flex items-center gap-3 shrink-0">
