@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
 import { generatePresignedUploadUrl } from '@/lib/s3';
-import { queryOne } from '@/lib/db';
+import { queryOne, getTenantIdForUser } from '@/lib/db';
 import { rateLimiters, checkRateLimit, createRateLimitResponse, getClientIp } from '@/lib/rate-limit';
 import { securityLogger } from '@/lib/security-logger';
 import { invoiceUploadSchema, invoiceConfirmSchema } from '@/lib/validation';
@@ -185,12 +185,13 @@ export async function PATCH(request: NextRequest) {
         [invoiceUrl, filename, fileType, existingInvoice.id]
       );
     } else {
-      // Insert new invoice
+      // Insert new invoice — need tenant_id (NOT NULL after migration 084)
+      const tenantId = await getTenantIdForUser(session.user.id);
       invoice = await queryOne<UserInvoiceRow>(
-        `INSERT INTO user_invoices (user_id, state, file_url, filename, file_type)
-         VALUES ($1, $2, $3, $4, $5)
+        `INSERT INTO user_invoices (user_id, tenant_id, state, file_url, filename, file_type)
+         VALUES ($1, $2, $3, $4, $5, $6)
          RETURNING id, user_id, state, file_url, filename, file_type, created_at, updated_at`,
-        [session.user.id, state, invoiceUrl, filename, fileType]
+        [session.user.id, tenantId, state, invoiceUrl, filename, fileType]
       );
     }
 

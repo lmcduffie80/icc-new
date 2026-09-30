@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/admin-auth';
-import { queryOne } from '@/lib/db';
+import { queryOne, getTenantIdForUser } from '@/lib/db';
 import { securityLogger } from '@/lib/security-logger';
 import { getClientIp } from '@/lib/rate-limit';
 
@@ -38,14 +38,16 @@ export async function PATCH(
     }
 
     // Upsert the user_profiles row — create if missing, update if present
+    // Need tenant_id (NOT NULL after migration 084) — only required on INSERT path
+    const tenantId = await getTenantIdForUser(id);
     const profile = await queryOne<{ invoice_exempt: boolean }>(
-      `INSERT INTO user_profiles (user_id, invoice_exempt, created_at, updated_at)
-       VALUES ($1, $2, NOW(), NOW())
+      `INSERT INTO user_profiles (user_id, tenant_id, invoice_exempt, created_at, updated_at)
+       VALUES ($1, $2, $3, NOW(), NOW())
        ON CONFLICT (user_id) DO UPDATE
-         SET invoice_exempt = $2,
+         SET invoice_exempt = $3,
              updated_at = NOW()
        RETURNING invoice_exempt`,
-      [id, invoice_exempt]
+      [id, tenantId, invoice_exempt]
     );
 
     securityLogger.logEvent({

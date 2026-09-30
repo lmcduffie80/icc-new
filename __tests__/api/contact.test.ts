@@ -12,6 +12,8 @@ const { mockQueryOne, mockGetSession, mockVerifyRecaptcha } = vi.hoisted(() => (
 
 vi.mock('@/lib/db', () => ({
   queryOne: mockQueryOne,
+  getDefaultTenantId: vi.fn().mockResolvedValue('test-tenant-id'),
+  getTenantIdForUser: vi.fn().mockResolvedValue('test-tenant-id'),
 }));
 
 // Mock headers function

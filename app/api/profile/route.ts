@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
-import { query, queryOne } from '@/lib/db';
+import { query, queryOne, getTenantIdForUser, getDefaultTenantId } from '@/lib/db';
 
 interface DbUserProfile {
   id: string;
@@ -37,10 +37,11 @@ export async function GET() {
     );
 
     if (!profile) {
-      // Create profile if it doesn't exist
+      // Create profile if it doesn't exist — need tenant_id (NOT NULL after migration 084)
+      const tenantId = await getDefaultTenantId();
       profile = await queryOne<DbUserProfile>(
-        `INSERT INTO user_profiles (user_id) VALUES ($1) RETURNING *`,
-        [session.user.id]
+        `INSERT INTO user_profiles (user_id, tenant_id) VALUES ($1, $2) RETURNING *`,
+        [session.user.id, tenantId]
       );
     }
 
@@ -102,9 +103,11 @@ export async function PATCH(request: NextRequest) {
           [phone, session.user.id]
         );
       } else {
+        // Need tenant_id (NOT NULL after migration 084)
+        const tenantId = await getTenantIdForUser(session.user.id);
         await query(
-          `INSERT INTO user_profiles (user_id, phone) VALUES ($1, $2)`,
-          [session.user.id, phone]
+          `INSERT INTO user_profiles (user_id, phone, tenant_id) VALUES ($1, $2, $3)`,
+          [session.user.id, phone, tenantId]
         );
       }
     }

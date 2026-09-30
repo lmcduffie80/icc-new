@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
-import { queryOne } from '@/lib/db';
+import { queryOne, getDefaultTenantId } from '@/lib/db';
 import { contactFormSchema } from '@/lib/validation';
 import { rateLimiters, checkRateLimit, createRateLimitResponse, getClientIp } from '@/lib/rate-limit';
 import { securityLogger } from '@/lib/security-logger';
@@ -132,12 +132,17 @@ export async function POST(request: NextRequest) {
       // User is not authenticated, which is fine for contact forms
     }
 
-    // Create the contact submission
+    // Create the contact submission — look up tenant_id (required NOT NULL after migration 084)
+    const tenantId = await getDefaultTenantId();
+    if (!tenantId) {
+      throw new Error('No tenant found for contact submission');
+    }
+
     const submission = await queryOne<ContactSubmission>(
-      `INSERT INTO contact_submissions (user_id, name, email, phone, subject, message, status)
-       VALUES ($1, $2, $3, $4, $5, $6, 'new')
+      `INSERT INTO contact_submissions (tenant_id, user_id, name, email, phone, subject, message, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'new')
        RETURNING *`,
-      [userId, name, email, phone || null, subject, message]
+      [tenantId, userId, name, email, phone || null, subject, message]
     );
 
     if (!submission) {

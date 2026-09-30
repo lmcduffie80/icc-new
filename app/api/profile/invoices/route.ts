@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
-import { query, queryOne } from '@/lib/db';
+import { query, queryOne, getTenantIdForUser } from '@/lib/db';
 import { generatePresignedUploadUrl } from '@/lib/s3';
 import { rateLimiters, checkRateLimit, createRateLimitResponse, getClientIp } from '@/lib/rate-limit';
 import { securityLogger } from '@/lib/security-logger';
@@ -215,12 +215,13 @@ export async function PATCH(request: NextRequest) {
 
     const { invoiceUrl, state, filename, fileType } = validationResult.data;
 
-    // 4. INSERT INTO DATABASE
+    // 4. INSERT INTO DATABASE — need tenant_id (NOT NULL after migration 084)
+    const tenantId = await getTenantIdForUser(session.user.id);
     const invoice = await queryOne<UserInvoiceRow>(
-      `INSERT INTO user_invoices (user_id, state, file_url, filename, file_type)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO user_invoices (user_id, tenant_id, state, file_url, filename, file_type)
+       VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING id, user_id, state, file_url, filename, file_type, created_at, updated_at`,
-      [session.user.id, state, invoiceUrl, filename, fileType]
+      [session.user.id, tenantId, state, invoiceUrl, filename, fileType]
     );
 
     // Log successful save

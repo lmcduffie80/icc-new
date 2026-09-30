@@ -13,6 +13,8 @@ vi.mock('@/lib/db', () => ({
   query: vi.fn(),
   queryOne: mockQueryOne,
   pool: {},
+  getDefaultTenantId: vi.fn().mockResolvedValue('test-tenant-id'),
+  getTenantIdForUser: vi.fn().mockResolvedValue('test-tenant-id'),
 }));
 
 vi.mock('next/headers', () => ({

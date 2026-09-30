@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
-import { query, queryOne } from '@/lib/db';
+import { query, queryOne, getTenantIdForUser } from '@/lib/db';
 
 interface DbAddress {
   id: string;
@@ -90,11 +90,14 @@ export async function POST(request: NextRequest) {
     );
     const shouldBePrimary = isPrimary || existingAddresses.length === 0;
 
+    // Need tenant_id (NOT NULL after migration 084)
+    const tenantId = await getTenantIdForUser(session.user.id);
+
     const address = await queryOne<DbAddress>(
-      `INSERT INTO user_addresses (user_id, label, full_name, street, city, state, zip_code, country, is_primary)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      `INSERT INTO user_addresses (user_id, tenant_id, label, full_name, street, city, state, zip_code, country, is_primary)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        RETURNING *`,
-      [session.user.id, label, fullName, street, city, state, zipCode, country, shouldBePrimary]
+      [session.user.id, tenantId, label, fullName, street, city, state, zipCode, country, shouldBePrimary]
     );
 
     if (!address) {

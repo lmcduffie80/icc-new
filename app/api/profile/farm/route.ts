@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
-import { queryOne } from '@/lib/db';
+import { queryOne, getTenantIdForUser } from '@/lib/db';
 import { farmProfileSchema } from '@/lib/validation';
 import { checkRateLimit, rateLimiters, createRateLimitResponse, getClientIp } from '@/lib/rate-limit';
 import { securityLogger } from '@/lib/security-logger';
@@ -125,12 +125,13 @@ export async function PUT(request: NextRequest) {
         [farmName, zipCode, cropTypes, farmAcres, coords?.lat ?? null, coords?.lng ?? null, session.user.id]
       );
     } else {
-      // Create new profile
+      // Create new profile — need tenant_id (NOT NULL after migration 084)
+      const tenantId = await getTenantIdForUser(session.user.id);
       farmProfile = await queryOne<DbFarmProfile>(
-        `INSERT INTO farm_profiles (user_id, farm_name, zip_code, crop_types, farm_acres, latitude, longitude)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+        `INSERT INTO farm_profiles (user_id, tenant_id, farm_name, zip_code, crop_types, farm_acres, latitude, longitude)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
          RETURNING *`,
-        [session.user.id, farmName, zipCode, cropTypes, farmAcres, coords?.lat ?? null, coords?.lng ?? null]
+        [session.user.id, tenantId, farmName, zipCode, cropTypes, farmAcres, coords?.lat ?? null, coords?.lng ?? null]
       );
     }
 
@@ -212,12 +213,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Farm profile already exists' }, { status: 409 });
     }
 
-    // Create new profile
+    // Create new profile — need tenant_id (NOT NULL after migration 084)
+    const tenantId = await getTenantIdForUser(userId);
     const farmProfile = await queryOne<DbFarmProfile>(
-      `INSERT INTO farm_profiles (user_id, farm_name, zip_code, crop_types, farm_acres, latitude, longitude)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `INSERT INTO farm_profiles (user_id, tenant_id, farm_name, zip_code, crop_types, farm_acres, latitude, longitude)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        RETURNING *`,
-      [userId, farmName, zipCode, cropTypes, farmAcres, coords?.lat ?? null, coords?.lng ?? null]
+      [userId, tenantId, farmName, zipCode, cropTypes, farmAcres, coords?.lat ?? null, coords?.lng ?? null]
     );
 
     if (!farmProfile) {

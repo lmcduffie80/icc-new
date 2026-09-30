@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/admin-auth';
-import { queryOne, query } from '@/lib/db';
+import { queryOne, query, getTenantIdForUser } from '@/lib/db';
 import { z } from 'zod';
 import { securityLogger } from '@/lib/security-logger';
 import { getClientIp } from '@/lib/rate-limit';
@@ -47,17 +47,7 @@ export async function PATCH(
 
   // Upsert user_profiles row (may not exist for very old accounts)
   // Need tenant_id for INSERT path — fetch from existing profile or fall back to first tenant
-  const existingProfile = await queryOne<{ tenant_id: string }>(
-    `SELECT tenant_id FROM user_profiles WHERE user_id = $1`,
-    [userId]
-  );
-  let tenantId = existingProfile?.tenant_id;
-  if (!tenantId) {
-    const defaultTenant = await queryOne<{ id: string }>(
-      `SELECT id FROM tenants ORDER BY created_at LIMIT 1`
-    );
-    tenantId = defaultTenant?.id;
-  }
+  const tenantId = await getTenantIdForUser(userId);
   if (!tenantId) {
     return NextResponse.json({ error: 'Could not determine tenant for user profile' }, { status: 500 });
   }

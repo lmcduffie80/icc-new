@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
 import { generatePresignedUploadUrl } from '@/lib/s3';
-import { queryOne } from '@/lib/db';
+import { queryOne, getTenantIdForUser } from '@/lib/db';
 import { rateLimiters, checkRateLimit, createRateLimitResponse, getClientIp } from '@/lib/rate-limit';
 import { securityLogger } from '@/lib/security-logger';
 import { licenseUploadSchema, licenseConfirmSchema } from '@/lib/validation';
@@ -150,11 +150,13 @@ export async function PATCH(request: NextRequest) {
     const { licenseUrl, state, filename, fileType } = validationResult.data;
 
     // 4. SAVE TO DATABASE — always insert a new row so we keep history
+    // Need tenant_id (NOT NULL after migration 084)
+    const tenantId = await getTenantIdForUser(session.user.id);
     const license = await queryOne<UserLicenseRow>(
-      `INSERT INTO user_licenses (user_id, license_url, license_state, license_filename, license_file_type)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO user_licenses (user_id, tenant_id, license_url, license_state, license_filename, license_file_type)
+       VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING id, user_id, license_url, license_state, license_filename, license_file_type, uploaded_at, created_at, updated_at`,
-      [session.user.id, licenseUrl, state ?? null, filename, fileType]
+      [session.user.id, tenantId, licenseUrl, state ?? null, filename, fileType]
     );
 
     const licenseMetadata = {

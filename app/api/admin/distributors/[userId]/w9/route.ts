@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/admin-auth';
-import { queryOne, query } from '@/lib/db';
+import { queryOne, query, getTenantIdForUser } from '@/lib/db';
 import { uploadToS3 } from '@/lib/s3';
 import { securityLogger } from '@/lib/security-logger';
 import { getClientIp } from '@/lib/rate-limit';
@@ -49,15 +49,18 @@ export async function POST(
   try {
     const w9Url = await uploadToS3(buffer, s3Key, file.type);
 
+    // Need tenant_id (NOT NULL after migration 084) — only required on INSERT path
+    const tenantId = await getTenantIdForUser(userId);
+
     await query(
-      `INSERT INTO user_profiles (user_id, distributor_w9_url, distributor_w9_filename, distributor_w9_uploaded_at)
-       VALUES ($1, $2, $3, NOW())
+      `INSERT INTO user_profiles (user_id, tenant_id, distributor_w9_url, distributor_w9_filename, distributor_w9_uploaded_at)
+       VALUES ($1, $2, $3, $4, NOW())
        ON CONFLICT (user_id) DO UPDATE SET
          distributor_w9_url = EXCLUDED.distributor_w9_url,
          distributor_w9_filename = EXCLUDED.distributor_w9_filename,
          distributor_w9_uploaded_at = NOW(),
          updated_at = NOW()`,
-      [userId, w9Url, file.name]
+      [userId, tenantId, w9Url, file.name]
     );
 
     securityLogger.logAdminAction(

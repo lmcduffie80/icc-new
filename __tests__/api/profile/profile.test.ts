@@ -17,6 +17,8 @@ vi.mock('@/lib/db', () => ({
   query: mockQuery,
   queryOne: mockQueryOne,
   pool: {},
+  getDefaultTenantId: vi.fn().mockResolvedValue('test-tenant-id'),
+  getTenantIdForUser: vi.fn().mockResolvedValue('test-tenant-id'),
 }));
 
 vi.mock('next/headers', () => ({
@@ -108,7 +110,7 @@ describe('GET /api/profile', () => {
       // Verify profile was created
       expect(mockQueryOne).toHaveBeenCalledWith(
         expect.stringContaining('INSERT INTO user_profiles'),
-        ['user-123']
+        ['user-123', 'test-tenant-id']
       );
     });
 
@@ -298,7 +300,7 @@ describe('PATCH /api/profile', () => {
       // Verify INSERT was called instead of UPDATE
       expect(mockQuery).toHaveBeenCalledWith(
         expect.stringContaining('INSERT INTO user_profiles'),
-        ['user-123', '555-5678']
+        ['user-123', '555-5678', 'test-tenant-id']
       );
     });
 

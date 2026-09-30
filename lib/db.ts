@@ -414,6 +414,30 @@ export function getPoolStats() {
 }
 
 /**
+ * Returns the default tenant ID (first tenant by created_at).
+ * Used as a fallback when creating records that require tenant_id.
+ */
+export async function getDefaultTenantId(): Promise<string | null> {
+  const tenant = await queryOne<{ id: string }>(
+    `SELECT id FROM tenants ORDER BY created_at LIMIT 1`
+  );
+  return tenant?.id ?? null;
+}
+
+/**
+ * Returns the tenant_id for a given user (from user_profiles),
+ * falling back to the default tenant if the user has no profile row yet.
+ */
+export async function getTenantIdForUser(userId: string): Promise<string | null> {
+  const profile = await queryOne<{ tenant_id: string }>(
+    `SELECT tenant_id FROM user_profiles WHERE user_id = $1`,
+    [userId]
+  );
+  if (profile?.tenant_id) return profile.tenant_id;
+  return getDefaultTenantId();
+}
+
+/**
  * Export cleanup function for graceful shutdown.
  * Call this when shutting down the application.
  */

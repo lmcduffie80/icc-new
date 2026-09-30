@@ -114,6 +114,8 @@ vi.mock('@/lib/db', () => {
     closePool: vi.fn().mockResolvedValue(undefined),
     getPoolStats: vi.fn().mockReturnValue({ configured: false }),
     testConnection: vi.fn().mockResolvedValue({ connected: false }),
+    getDefaultTenantId: vi.fn().mockResolvedValue('test-tenant-id'),
+    getTenantIdForUser: vi.fn().mockResolvedValue('test-tenant-id'),
   };
 });
 
