@@ -56,7 +56,7 @@ export async function PATCH(
     const defaultTenant = await queryOne<{ id: string }>(
       `SELECT id FROM tenants ORDER BY created_at LIMIT 1`
     );
-    tenantId = defaultTenant?.id ?? null;
+    tenantId = defaultTenant?.id;
   }
   if (!tenantId) {
     return NextResponse.json({ error: 'Could not determine tenant for user profile' }, { status: 500 });
