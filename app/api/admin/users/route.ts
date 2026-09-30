@@ -99,6 +99,19 @@ export async function POST(request: NextRequest) {
     [randomUUID(), userId, email, passwordHash, now]
   );
 
+  // Create a user_profiles row for this user using the first available tenant
+  const defaultTenant = await queryOne<{ id: string }>(
+    `SELECT id FROM tenants ORDER BY created_at LIMIT 1`
+  );
+  if (defaultTenant) {
+    await query(
+      `INSERT INTO user_profiles (user_id, tenant_id)
+       VALUES ($1, $2)
+       ON CONFLICT (user_id) DO NOTHING`,
+      [userId, defaultTenant.id]
+    );
+  }
+
   return NextResponse.json(newUser, { status: 201 });
 }
 

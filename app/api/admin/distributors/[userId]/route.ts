@@ -46,31 +46,53 @@ export async function PATCH(
   }
 
   // Upsert user_profiles row (may not exist for very old accounts)
-  await query(
-    `INSERT INTO user_profiles (
-       user_id, is_distributor, distributor_notes,
-       distributor_company_name, distributor_ein,
-       distributor_approved_at, distributor_approved_by
-     )
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
-     ON CONFLICT (user_id) DO UPDATE SET
-       is_distributor = EXCLUDED.is_distributor,
-       distributor_notes = EXCLUDED.distributor_notes,
-       distributor_company_name = EXCLUDED.distributor_company_name,
-       distributor_ein = EXCLUDED.distributor_ein,
-       distributor_approved_at = CASE WHEN EXCLUDED.is_distributor THEN NOW() ELSE NULL END,
-       distributor_approved_by = CASE WHEN EXCLUDED.is_distributor THEN $7 ELSE NULL END,
-       updated_at = NOW()`,
-    [
-      userId,
-      is_distributor,
-      distributor_notes ?? null,
-      distributor_company_name ?? null,
-      distributor_ein ?? null,
-      is_distributor ? new Date().toISOString() : null,
-      is_distributor ? auth.session.user.id : null,
-    ]
+  // Need tenant_id for INSERT path — fetch from existing profile or fall back to first tenant
+  const existingProfile = await queryOne<{ tenant_id: string }>(
+    `SELECT tenant_id FROM user_profiles WHERE user_id = $1`,
+    [userId]
   );
+  let tenantId = existingProfile?.tenant_id;
+  if (!tenantId) {
+    const defaultTenant = await queryOne<{ id: string }>(
+      `SELECT id FROM tenants ORDER BY created_at LIMIT 1`
+    );
+    tenantId = defaultTenant?.id ?? null;
+  }
+  if (!tenantId) {
+    return NextResponse.json({ error: 'Could not determine tenant for user profile' }, { status: 500 });
+  }
+
+  try {
+    await query(
+      `INSERT INTO user_profiles (
+         user_id, tenant_id, is_distributor, distributor_notes,
+         distributor_company_name, distributor_ein,
+         distributor_approved_at, distributor_approved_by
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       ON CONFLICT (user_id) DO UPDATE SET
+         is_distributor = EXCLUDED.is_distributor,
+         distributor_notes = EXCLUDED.distributor_notes,
+         distributor_company_name = EXCLUDED.distributor_company_name,
+         distributor_ein = EXCLUDED.distributor_ein,
+         distributor_approved_at = CASE WHEN EXCLUDED.is_distributor THEN NOW() ELSE NULL END,
+         distributor_approved_by = CASE WHEN EXCLUDED.is_distributor THEN $8 ELSE NULL END,
+         updated_at = NOW()`,
+      [
+        userId,
+        tenantId,
+        is_distributor,
+        distributor_notes ?? null,
+        distributor_company_name ?? null,
+        distributor_ein ?? null,
+        is_distributor ? new Date().toISOString() : null,
+        is_distributor ? auth.session.user.id : null,
+      ]
+    );
+  } catch (err) {
+    console.error('[PATCH /api/admin/distributors] DB error:', err);
+    return NextResponse.json({ error: 'Database error updating distributor status' }, { status: 500 });
+  }
 
   securityLogger.logAdminAction(
     auth.session.user.id,
