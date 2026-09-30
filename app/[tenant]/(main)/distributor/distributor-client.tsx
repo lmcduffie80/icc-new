@@ -7,7 +7,8 @@ import { useCartStore } from '@/lib/cart-store';
 import { useTenant } from '@/components/tenant-provider';
 import { ProductImage } from '@/components/product-image';
 import { Button } from '@/components/ui/button';
-import { formatPrice } from '@/lib/utils';
+import { PriceWithUnit } from '@/components/ui/price-with-unit';
+import { formatPrice, calculateCostPerGallon } from '@/lib/utils';
 import {
   ShoppingCart,
   Search,
@@ -31,6 +32,7 @@ interface DistributorProduct {
   in_stock: boolean;
   inventory_count: number;
   unit_of_measure: string | null;
+  container_size: string | null;
 }
 
 export function DistributorPortalClient() {
@@ -288,24 +290,24 @@ export function DistributorPortalClient() {
                   </div>
 
                   {/* Pricing */}
-                  <div className="flex items-end gap-3">
-                    <div>
-                      <p className="text-xs text-slate-400 mb-0.5">Your price</p>
-                      <p className="text-xl font-bold text-emerald-700">
-                        {formatPrice(product.distributor_price)}
-                        {product.unit_of_measure && (
-                          <span className="text-xs font-normal text-slate-400 ml-1">
-                            / {product.unit_of_measure}
-                          </span>
-                        )}
-                      </p>
-                    </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-slate-400">Your price</p>
+                    <PriceWithUnit
+                      price={product.distributor_price}
+                      unitOfMeasure={product.unit_of_measure}
+                      containerSize={product.container_size}
+                      priceClassName="text-xl font-bold text-emerald-700"
+                      showCostPerGallon={true}
+                    />
+                    {/* Retail price crossed out — per gallon if calculable, else total */}
                     {savings > 0 && (
-                      <div className="pb-0.5">
-                        <p className="text-xs text-slate-400 line-through">
-                          {formatPrice(product.retail_price)}
-                        </p>
-                      </div>
+                      <p className="text-xs text-slate-400">
+                        Retail:{' '}
+                        <span className="line-through">
+                          {calculateCostPerGallon(product.retail_price, product.unit_of_measure, product.container_size)
+                            ?? `${formatPrice(product.retail_price)}${product.unit_of_measure ? `/${product.unit_of_measure}` : ''}`}
+                        </span>
+                      </p>
                     )}
                   </div>
 

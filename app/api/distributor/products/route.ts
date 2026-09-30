@@ -18,6 +18,7 @@ interface DistributorProduct {
   in_stock: boolean;
   inventory_count: number;
   unit_of_measure: string | null;
+  container_size: string | null;
 }
 
 // GET /api/distributor/products?tenant_id=xxx
@@ -70,7 +71,8 @@ export async function GET(request: NextRequest) {
        p.image,
        p.in_stock,
        p.inventory_count,
-       p.unit_of_measure
+       p.unit_of_measure,
+       p.attributes->>'containerSizes' AS container_size
      FROM products p
      LEFT JOIN distributor_pricing dp ON dp.product_id = p.id AND dp.tenant_id = p.tenant_id
      WHERE p.tenant_id = $1

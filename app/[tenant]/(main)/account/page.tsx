@@ -59,6 +59,31 @@ export default function AccountPage() {
           </p>
         </div>
 
+        {/* Distributor Portal — shown only to approved distributor accounts, pinned to top */}
+        {isDistributor && (
+          <Link
+            href="/distributor"
+            className="group bg-gradient-to-br from-sky-50 to-indigo-50 border border-sky-200 rounded-xl p-6 hover:border-sky-400 hover:shadow-md transition-all mb-6 block"
+          >
+            <div className="flex items-start gap-4">
+              <div className="p-3 rounded-lg bg-sky-100 text-sky-700 group-hover:bg-sky-700 group-hover:text-white transition-colors">
+                <Tag className="h-5 w-5" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-sky-800 group-hover:text-sky-900 transition-colors">
+                    Distributor Store
+                  </h3>
+                  <ChevronRight className="h-4 w-4 text-sky-400 group-hover:text-sky-700 group-hover:translate-x-1 transition-all" />
+                </div>
+                <p className="text-sm text-sky-600 mt-1">
+                  View exclusive distributor pricing — see your discounted prices vs. retail side by side
+                </p>
+              </div>
+            </div>
+          </Link>
+        )}
+
         {/* Commodity Prices */}
         <CommodityPriceBanner />
 
@@ -84,39 +109,11 @@ export default function AccountPage() {
               <h2 className="text-xl font-semibold">{user.name}</h2>
               <p className="text-muted-foreground">{user.email}</p>
             </div>
-            <Button variant="outline" onClick={handleSignOut} className="gap-2">
-              <LogOut className="h-4 w-4" />
-              Sign out
-            </Button>
           </div>
         </div>
 
         {/* Menu Grid */}
         <div className="grid gap-4 sm:grid-cols-2">
-          {/* Distributor Portal — shown only to approved distributor accounts */}
-          {isDistributor && (
-            <Link
-              href="/distributor"
-              className="group bg-gradient-to-br from-sky-50 to-indigo-50 border border-sky-200 rounded-xl p-6 hover:border-sky-400 hover:shadow-md transition-all sm:col-span-2"
-            >
-              <div className="flex items-start gap-4">
-                <div className="p-3 rounded-lg bg-sky-100 text-sky-700 group-hover:bg-sky-700 group-hover:text-white transition-colors">
-                  <Tag className="h-5 w-5" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-semibold text-sky-800 group-hover:text-sky-900 transition-colors">
-                      Distributor Store
-                    </h3>
-                    <ChevronRight className="h-4 w-4 text-sky-400 group-hover:text-sky-700 group-hover:translate-x-1 transition-all" />
-                  </div>
-                  <p className="text-sm text-sky-600 mt-1">
-                    View exclusive distributor pricing — see your discounted prices vs. retail side by side
-                  </p>
-                </div>
-              </div>
-            </Link>
-          )}
           {accountNavItems.map((item) => (
             <Link
               key={item.href}
@@ -141,6 +138,18 @@ export default function AccountPage() {
               </div>
             </Link>
           ))}
+        </div>
+
+        {/* Sign Out — at the bottom */}
+        <div className="mt-6 flex justify-center">
+          <Button
+            variant="ghost"
+            onClick={handleSignOut}
+            className="gap-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+          >
+            <LogOut className="h-4 w-4" />
+            Sign out
+          </Button>
         </div>
       </div>
     </div>
