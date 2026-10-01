@@ -21,6 +21,7 @@ const NAV_SLUGS = [
   { slug: 'distributor',      label: 'Distributor'   },
   { slug: 'crop',             label: 'Crop Planning' },
   { slug: 'soil-intelligence',label: 'Soil Intel'    },
+  { slug: 'account/fields',   label: 'Field Satellite'},
   { slug: 'contact',          label: 'Contact'       },
 ];
 
