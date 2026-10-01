@@ -1,115 +1,240 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import type { Map, LatLng } from 'leaflet';
+import { useEffect, useRef, useState, useCallback } from 'react';
+import { getFtwUrl } from '@/lib/ftw';
 
-interface FieldMapProps {
-  /** Initial center [lat, lng] for the map. Falls back to US center. */
-  center?: [number, number];
-  /** If provided, displays this polygon (read-only) */
+export interface FieldMapProps {
+  /**
+   * Called when the user selects or draws a polygon.
+   * Coords are [[lon, lat], ...] in GeoJSON order (ring NOT closed).
+   */
+  onPolygonComplete: (coords: [number, number][]) => void;
+  /** Pre-existing polygon to highlight (e.g. when editing). [[lon,lat],...] */
   existingCoords?: [number, number][];
-  /** Called when the user finishes drawing a polygon */
-  onPolygonComplete?: (coords: [number, number][]) => void;
-  /** If true, shows draw controls. If false, read-only. */
-  drawMode?: boolean;
+  /** Initial map center [lon, lat]. Defaults to center-USA. */
+  initialCenter?: [number, number];
+  /** Whether to also show the manual draw toolbar as a fallback. */
+  showDrawFallback?: boolean;
   height?: string;
 }
 
+let _pmtilesRegistered = false;
+
 /**
- * Interactive Leaflet map for drawing and viewing field polygons.
+ * Interactive map component powered by MapLibre GL JS.
  *
- * In drawMode=true: shows geoman polygon draw toolbar.
- * In drawMode=false (default): shows the existing polygon in blue.
+ * Shows pre-detected field boundaries sourced from the Fields of the World
+ * (FTW) dataset — 3.17 billion field polygons derived from Sentinel-2 imagery
+ * by Taylor Geospatial / Microsoft AI for Good (CC-BY-4.0).
  *
- * Dynamically imports Leaflet and geoman to avoid SSR issues.
+ * The farmer clicks their field → polygon is extracted and returned via
+ * `onPolygonComplete`. A manual draw fallback is available if the field
+ * isn't in the dataset.
  */
 export function FieldMap({
-  center = [39.5, -98.35], // geographic center of the contiguous US
-  existingCoords,
   onPolygonComplete,
-  drawMode = false,
-  height = '420px',
+  existingCoords,
+  initialCenter = [-83.4019, 31.4395], // default: Georgia
+  showDrawFallback = true,
+  height = '480px',
 }: FieldMapProps) {
-  const mapRef = useRef<Map | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mapRef = useRef<any>(null);
   const [isReady, setIsReady] = useState(false);
+  const [ftwLoaded, setFtwLoaded] = useState(false);
+  const [selectedCoords, setSelectedCoords] = useState<[number, number][] | null>(null);
+  const [drawMode, setDrawMode] = useState(false);
+  const [status, setStatus] = useState<string>('Click your field boundary on the map');
 
+  // Load FTW PMTiles for the current location
+  const loadFtwLayer = useCallback(async (map: ReturnType<typeof mapRef.current>, center: [number, number]) => {
+    try {
+      const pmtilesUrl = await getFtwUrl(center[1], center[0]); // lat, lon
+      if (!pmtilesUrl || !map) return;
+
+      if (map.getSource('ftw')) {
+        (map.getSource('ftw') as { setUrl: (u: string) => void }).setUrl(`pmtiles://${pmtilesUrl}`);
+      } else {
+        map.addSource('ftw', {
+          type: 'vector',
+          url: `pmtiles://${pmtilesUrl}`,
+          attribution: '© <a href="https://fieldsofthe.world">Fields of the World</a> (CC-BY-4.0)',
+        });
+
+        // Field fill — semi-transparent green
+        map.addLayer({
+          id: 'ftw-fill',
+          type: 'fill',
+          source: 'ftw',
+          'source-layer': '2024',
+          paint: {
+            'fill-color': '#22c55e',
+            'fill-opacity': [
+              'case',
+              ['boolean', ['feature-state', 'selected'], false], 0.55,
+              ['boolean', ['feature-state', 'hovered'], false], 0.35,
+              0.15,
+            ],
+          },
+        });
+
+        // Field outline
+        map.addLayer({
+          id: 'ftw-outline',
+          type: 'line',
+          source: 'ftw',
+          'source-layer': '2024',
+          paint: {
+            'line-color': [
+              'case',
+              ['boolean', ['feature-state', 'selected'], false], '#16a34a',
+              ['boolean', ['feature-state', 'hovered'], false], '#22c55e',
+              '#4ade80',
+            ],
+            'line-width': [
+              'case',
+              ['boolean', ['feature-state', 'selected'], false], 3,
+              ['boolean', ['feature-state', 'hovered'], false], 2,
+              1,
+            ],
+          },
+        });
+      }
+
+      setFtwLoaded(true);
+      setStatus('Click your field boundary on the map');
+    } catch {
+      setStatus("Couldn't load field boundaries — use draw mode below");
+    }
+  }, []);
+
+  // Initialize MapLibre
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
 
-    // Dynamically import to avoid SSR crash
-    Promise.all([
-      import('leaflet'),
-      import('leaflet/dist/leaflet.css'),
-      ...(drawMode ? [import('@geoman-io/leaflet-geoman-free'), import('@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css')] : []),
-    ]).then(([L]) => {
-      if (!containerRef.current || mapRef.current) return;
+    let mapInstance: ReturnType<typeof mapRef.current> | null = null;
 
-      // Fix default icon paths broken by webpack
+    Promise.all([
+      import('maplibre-gl'),
+      import('pmtiles'),
+    ]).then(async ([maplibreModule, pmtilesModule]) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      delete (L.Icon.Default.prototype as any)._getIconUrl;
-      L.Icon.Default.mergeOptions({
-        iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-        iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-        shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+      const maplibregl = (maplibreModule as any).default ?? maplibreModule;
+      const { Protocol } = pmtilesModule;
+
+      // Register PMTiles protocol once globally
+      if (!_pmtilesRegistered) {
+        const protocol = new Protocol();
+        maplibregl.addProtocol('pmtiles', protocol.tile.bind(protocol));
+        _pmtilesRegistered = true;
+      }
+
+      if (!containerRef.current) return;
+
+      mapInstance = new maplibregl.Map({
+        container: containerRef.current,
+        style: {
+          version: 8,
+          sources: {
+            osm: {
+              type: 'raster',
+              tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+              tileSize: 256,
+              attribution: '© <a href="https://openstreetmap.org">OpenStreetMap</a> contributors',
+            },
+          },
+          layers: [{ id: 'osm', type: 'raster', source: 'osm' }],
+        },
+        center: initialCenter,
+        zoom: 14,
+        attributionControl: false,
       });
 
-      const map = L.map(containerRef.current!, { center, zoom: 13 });
-      mapRef.current = map;
+      mapInstance.addControl(
+        new maplibregl.AttributionControl({ compact: true }),
+        'bottom-right'
+      );
+      mapInstance.addControl(new maplibregl.NavigationControl(), 'top-right');
 
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-        maxZoom: 19,
-      }).addTo(map);
+      mapRef.current = mapInstance;
 
-      // Draw existing polygon
-      if (existingCoords && existingCoords.length > 0) {
-        const latLngs: [number, number][] = existingCoords.map(([lng, lat]) => [lat, lng]);
-        const poly = L.polygon(latLngs as unknown as LatLng[], {
-          color: '#2563eb',
-          fillColor: '#3b82f6',
-          fillOpacity: 0.25,
-          weight: 2,
-        }).addTo(map);
-        map.fitBounds(poly.getBounds(), { padding: [30, 30] });
-      }
+      mapInstance.on('load', async () => {
+        setIsReady(true);
 
-      if (drawMode) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const mapWithGeo = map as any;
-        if (mapWithGeo.pm) {
-          mapWithGeo.pm.addControls({
-            position: 'topleft',
-            drawMarker: false,
-            drawCircleMarker: false,
-            drawPolyline: false,
-            drawRectangle: true,
-            drawCircle: false,
-            drawPolygon: true,
-            editMode: true,
-            dragMode: false,
-            cutPolygon: false,
-            removalMode: true,
+        // Draw existing polygon if editing
+        if (existingCoords && existingCoords.length > 0) {
+          const ring = [...existingCoords, existingCoords[0]];
+          mapInstance!.addSource('existing', {
+            type: 'geojson',
+            data: { type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [ring] } },
           });
-
-          // Listen for polygon completion
-          map.on('pm:create', (e: unknown) => {
-            const event = e as { layer: { getLatLngs: () => unknown } };
-            const rings = event.layer.getLatLngs() as LatLng[][];
-            const outerRing = rings[0] as LatLng[];
-            // Convert to [lon, lat] pairs for Agromonitoring (which uses GeoJSON order)
-            const coords: [number, number][] = outerRing.map((ll) => [ll.lng, ll.lat]);
-            onPolygonComplete?.(coords);
-          });
+          mapInstance!.addLayer({ id: 'existing-fill', type: 'fill', source: 'existing', paint: { 'fill-color': '#2563eb', 'fill-opacity': 0.25 } });
+          mapInstance!.addLayer({ id: 'existing-line', type: 'line', source: 'existing', paint: { 'line-color': '#2563eb', 'line-width': 2.5, 'line-dasharray': [4, 2] } });
         }
-      }
 
-      setIsReady(true);
+        // Load FTW field boundaries
+        await loadFtwLayer(mapInstance!, initialCenter);
+      });
+
+      // Hover effect
+      let hoveredId: number | string | null = null;
+      mapInstance.on('mousemove', 'ftw-fill', (e: { features?: Array<{ id?: number | string }> }) => {
+        if (!e.features?.length) return;
+        mapInstance!.getCanvas().style.cursor = 'pointer';
+        if (hoveredId !== null) mapInstance!.setFeatureState({ source: 'ftw', sourceLayer: '2024', id: hoveredId }, { hovered: false });
+        hoveredId = e.features[0].id ?? null;
+        if (hoveredId !== null) mapInstance!.setFeatureState({ source: 'ftw', sourceLayer: '2024', id: hoveredId }, { hovered: true });
+      });
+      mapInstance.on('mouseleave', 'ftw-fill', () => {
+        mapInstance!.getCanvas().style.cursor = '';
+        if (hoveredId !== null) mapInstance!.setFeatureState({ source: 'ftw', sourceLayer: '2024', id: hoveredId }, { hovered: false });
+        hoveredId = null;
+      });
+
+      // Track selected ID for highlight
+      let selectedId: number | string | null = null;
+
+      // Click to select a field
+      mapInstance.on('click', 'ftw-fill', (e: { features?: Array<{ id?: number | string; geometry: { type: string; coordinates: [number, number][][] } }> }) => {
+        if (!e.features?.length) return;
+        const feature = e.features[0];
+        if (!feature.geometry || feature.geometry.type !== 'Polygon') return;
+
+        // Deselect previous
+        if (selectedId !== null) mapInstance!.setFeatureState({ source: 'ftw', sourceLayer: '2024', id: selectedId }, { selected: false });
+        selectedId = feature.id ?? null;
+        if (selectedId !== null) mapInstance!.setFeatureState({ source: 'ftw', sourceLayer: '2024', id: selectedId }, { selected: true });
+
+        // Extract outer ring, drop closing coord
+        const ring = feature.geometry.coordinates[0] as [number, number][];
+        const coords = ring[ring.length - 1][0] === ring[0][0] && ring[ring.length - 1][1] === ring[0][1]
+          ? ring.slice(0, -1)
+          : ring;
+
+        setSelectedCoords(coords);
+        setStatus(`Field selected — ${coords.length} vertices · Save below`);
+        onPolygonComplete(coords);
+      });
+
+      // Reload FTW when the user pans to a different area (state/country)
+      let lastLoadCenter = initialCenter;
+      mapInstance.on('moveend', async () => {
+        const c = mapInstance!.getCenter();
+        const distKm = Math.sqrt(
+          Math.pow((c.lng - lastLoadCenter[0]) * 111, 2) +
+          Math.pow((c.lat - lastLoadCenter[1]) * 111, 2)
+        );
+        if (distKm > 200) {
+          lastLoadCenter = [c.lng, c.lat];
+          await loadFtwLayer(mapInstance!, [c.lng, c.lat]);
+        }
+      });
     });
 
     return () => {
-      if (mapRef.current) {
-        mapRef.current.remove();
+      if (mapInstance) {
+        mapInstance.remove();
         mapRef.current = null;
       }
     };
@@ -117,16 +242,51 @@ export function FieldMap({
   }, []);
 
   return (
-    <div className="relative overflow-hidden rounded-xl border border-border/60">
-      {!isReady && (
-        <div
-          className="absolute inset-0 flex items-center justify-center bg-muted/40 z-10 text-sm text-muted-foreground"
-          style={{ height }}
-        >
-          Loading map…
-        </div>
+    <div className="space-y-2">
+      {/* Status bar */}
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm text-muted-foreground flex-1">{status}</p>
+        {selectedCoords && (
+          <span className="text-xs text-green-600 font-medium flex items-center gap-1">
+            <span className="h-2 w-2 rounded-full bg-green-500 inline-block" />
+            Field selected
+          </span>
+        )}
+      </div>
+
+      {/* Map container */}
+      <div className="relative rounded-xl overflow-hidden border border-border/60">
+        {!isReady && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-muted/40 z-10 gap-2 text-sm text-muted-foreground" style={{ height }}>
+            <span className="animate-pulse">Loading map…</span>
+          </div>
+        )}
+        {isReady && !ftwLoaded && (
+          <div className="absolute top-3 left-3 z-10 rounded-lg bg-background/90 border border-border/60 px-3 py-1.5 text-xs text-muted-foreground backdrop-blur-sm">
+            Loading field boundaries…
+          </div>
+        )}
+        {isReady && ftwLoaded && (
+          <div className="absolute top-3 left-3 z-10 rounded-lg bg-background/90 border border-border/60 px-3 py-1.5 text-xs backdrop-blur-sm flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-full bg-green-500" />
+            <span>FTW field boundaries · click to select</span>
+          </div>
+        )}
+        <div ref={containerRef} style={{ height, width: '100%' }} />
+      </div>
+
+      {/* Draw fallback */}
+      {showDrawFallback && isReady && (
+        <p className="text-xs text-muted-foreground text-center">
+          Can't find your field?{' '}
+          <button
+            onClick={() => setDrawMode((v) => !v)}
+            className="underline underline-offset-2 hover:text-foreground hover:cursor-pointer transition-colors"
+          >
+            {drawMode ? 'Cancel draw mode' : 'Draw it manually'}
+          </button>
+        </p>
       )}
-      <div ref={containerRef} style={{ height, width: '100%' }} />
     </div>
   );
 }

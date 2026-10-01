@@ -6,15 +6,21 @@ import Link from 'next/link';
 import { useAuth } from '@/components/auth-provider';
 import { Button } from '@/components/ui/button';
 import {
-  ArrowLeft, MapPin, Plus, Satellite, Trash2, Loader2,
-  LandPlot, AlertCircle, CheckCircle2, X,
+  ArrowLeft, MapPin, Satellite, Trash2, Loader2,
+  LandPlot, AlertCircle, CheckCircle2, X, MousePointerClick,
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 
-// Dynamically import map to avoid SSR issues
 const FieldMap = dynamic(
   () => import('@/components/farm/field-map').then((m) => m.FieldMap),
-  { ssr: false, loading: () => <div className="flex items-center justify-center h-[420px] rounded-xl border border-border/60 bg-muted/30 text-sm text-muted-foreground">Loading map…</div> }
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex items-center justify-center h-[480px] rounded-xl border border-border/60 bg-muted/30 text-sm text-muted-foreground animate-pulse">
+        Loading map…
+      </div>
+    ),
+  }
 );
 
 interface Field {
@@ -36,13 +42,23 @@ export default function FieldsPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  // Draw state
-  const [isDrawing, setIsDrawing] = useState(false);
-  const [drawnCoords, setDrawnCoords] = useState<[number, number][] | null>(null);
+  // Selection state — set when user clicks a field on the map
+  const [selectedCoords, setSelectedCoords] = useState<[number, number][] | null>(null);
   const [polygonName, setPolygonName] = useState('');
   const [cropType, setCropType] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // Initial map center — use center of first saved field, else default (Georgia)
+  const initialCenter: [number, number] = (() => {
+    const first = fields[0];
+    if (!first) return [-83.4019, 31.4395];
+    const coords = first.geojson?.coordinates?.[0] ?? [];
+    if (coords.length === 0) return [-83.4019, 31.4395];
+    const lon = coords.reduce((s, [x]) => s + x, 0) / coords.length;
+    const lat = coords.reduce((s, [, y]) => s + y, 0) / coords.length;
+    return [lon, lat];
+  })();
 
   const fetchFields = useCallback(async () => {
     try {
@@ -64,16 +80,22 @@ export default function FieldsPage() {
     if (user) fetchFields();
   }, [user, isPending, router, fetchFields]);
 
+  const handleFieldSelected = (coords: [number, number][]) => {
+    setSelectedCoords(coords);
+    setPolygonName('');
+    setCropType('');
+    setError(null);
+  };
+
   const handleSaveField = async () => {
-    if (!drawnCoords || drawnCoords.length < 3) {
-      setError('Please draw a polygon on the map first');
+    if (!selectedCoords || selectedCoords.length < 3) {
+      setError('Select a field boundary first');
       return;
     }
     if (!polygonName.trim()) {
-      setError('Please enter a name for this field');
+      setError('Enter a name for this field');
       return;
     }
-
     try {
       setIsSaving(true);
       setError(null);
@@ -82,28 +104,21 @@ export default function FieldsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           polygon_name: polygonName.trim(),
-          coordinates: drawnCoords,
+          coordinates: selectedCoords,
           crop_type: cropType.trim() || undefined,
         }),
       });
-
       if (!res.ok) {
         const data = await res.json();
         setError(data.error ?? 'Failed to save field');
         return;
       }
-
       const data = await res.json();
       setFields((prev) => [data.field, ...prev]);
-      setIsDrawing(false);
-      setDrawnCoords(null);
+      setSelectedCoords(null);
       setPolygonName('');
       setCropType('');
-      setSuccess(
-        data.field.agro_poly_id
-          ? `"${data.field.polygon_name}" saved and registered for satellite monitoring.`
-          : `"${data.field.polygon_name}" saved locally. Satellite registration pending.`
-      );
+      setSuccess(`"${data.field.polygon_name}" saved — satellite monitoring enabled.`);
       setTimeout(() => setSuccess(null), 6000);
     } catch {
       setError('Failed to save field');
@@ -134,7 +149,7 @@ export default function FieldsPage() {
       <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center">
         <div className="flex items-center gap-3">
           <Loader2 className="animate-spin h-5 w-5 text-primary" />
-          <span className="text-muted-foreground">Loading...</span>
+          <span className="text-muted-foreground">Loading…</span>
         </div>
       </div>
     );
@@ -144,132 +159,141 @@ export default function FieldsPage() {
 
   return (
     <div className="min-h-[calc(100vh-4rem)] bg-muted/30">
-      <div className="mx-auto max-w-4xl px-4 py-12 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-4xl px-4 py-12 sm:px-6 lg:px-8 space-y-6">
 
         {/* Header */}
-        <div className="mb-8">
-          <Link href="/account" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-4 transition-colors">
+        <div>
+          <Link
+            href="/account"
+            className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-4 transition-colors"
+          >
             <ArrowLeft className="h-4 w-4" />
             Back to Account
           </Link>
-          <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-lg bg-primary/10 text-primary">
+              <LandPlot className="h-5 w-5" />
+            </div>
             <div>
-              <h1 className="text-2xl font-semibold tracking-tight">My Fields</h1>
-              <p className="text-muted-foreground mt-1">
-                Draw your field boundaries to enable satellite monitoring
+              <h1 className="text-2xl font-semibold tracking-tight">Field Satellite</h1>
+              <p className="text-muted-foreground text-sm mt-0.5">
+                Pre-detected field boundaries shown automatically — click your field to save it.
               </p>
             </div>
-            {!isDrawing && (
-              <Button onClick={() => { setIsDrawing(true); setError(null); }}>
-                <Plus className="h-4 w-4 mr-2" />
-                Add Field
-              </Button>
-            )}
           </div>
         </div>
 
         {/* Feedback banners */}
         {error && (
-          <div className="mb-6 flex items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+          <div className="flex items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
             <AlertCircle className="h-4 w-4 shrink-0" />
             <span className="flex-1">{error}</span>
-            <button onClick={() => setError(null)}><X className="h-4 w-4" /></button>
+            <button onClick={() => setError(null)} className="hover:cursor-pointer">
+              <X className="h-4 w-4" />
+            </button>
           </div>
         )}
         {success && (
-          <div className="mb-6 flex items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+          <div className="flex items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
             <CheckCircle2 className="h-4 w-4 shrink-0" />
             {success}
           </div>
         )}
 
-        {/* Draw new field panel */}
-        {isDrawing && (
-          <div className="mb-6 rounded-xl border border-border bg-card p-6 space-y-5">
-            <div className="flex items-center justify-between">
-              <h2 className="font-semibold text-lg">Draw Your Field</h2>
-              <button
-                onClick={() => { setIsDrawing(false); setDrawnCoords(null); setError(null); }}
-                className="text-muted-foreground hover:text-foreground transition-colors hover:cursor-pointer"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <p className="text-sm text-muted-foreground">
-              Use the polygon tool <span className="font-medium text-foreground">(pentagon icon)</span> in the top-left of the map to draw your field boundary. Click each corner, then click the first point to close.
-            </p>
-
-            <FieldMap
-              drawMode
-              onPolygonComplete={(coords) => {
-                setDrawnCoords(coords);
-                setError(null);
-              }}
-            />
-
-            {drawnCoords && (
-              <div className="flex items-center gap-2 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
-                <CheckCircle2 className="h-4 w-4 shrink-0" />
-                Polygon drawn — {drawnCoords.length} points
-              </div>
-            )}
-
-            {/* Field details */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium">Field Name <span className="text-destructive">*</span></label>
-                <input
-                  type="text"
-                  value={polygonName}
-                  onChange={(e) => setPolygonName(e.target.value)}
-                  placeholder="e.g. North Field, Back 40"
-                  className="w-full px-3 py-2.5 border border-input rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium">Crop Type <span className="text-muted-foreground text-xs font-normal">(optional)</span></label>
-                <input
-                  type="text"
-                  value={cropType}
-                  onChange={(e) => setCropType(e.target.value)}
-                  placeholder="e.g. Corn, Soybeans, Wheat"
-                  className="w-full px-3 py-2.5 border border-input rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                />
-              </div>
-            </div>
-
-            <div className="flex gap-3 pt-1">
-              <Button onClick={handleSaveField} disabled={isSaving || !drawnCoords}>
-                {isSaving ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Saving…</> : 'Save Field'}
-              </Button>
-              <Button variant="outline" onClick={() => { setIsDrawing(false); setDrawnCoords(null); setError(null); }}>
-                Cancel
-              </Button>
-            </div>
+        {/* Map — always visible */}
+        <div className="rounded-xl border border-border bg-card p-4 space-y-4">
+          <div className="flex items-center gap-2 text-sm">
+            <MousePointerClick className="h-4 w-4 text-muted-foreground" />
+            <span className="text-muted-foreground">
+              <span className="text-foreground font-medium">Click any green boundary</span> on the map to select that field
+            </span>
           </div>
-        )}
 
-        {/* Fields list */}
-        {fields.length === 0 && !isDrawing ? (
-          <div className="rounded-xl border border-border bg-card p-12 text-center">
-            <LandPlot className="h-12 w-12 mx-auto text-muted-foreground/40 mb-4" />
-            <h3 className="font-medium text-lg mb-1">No fields yet</h3>
-            <p className="text-sm text-muted-foreground mb-6">
-              Add your first field to start viewing satellite irrigation data.
-            </p>
-            <Button onClick={() => setIsDrawing(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add Your First Field
-            </Button>
-          </div>
-        ) : (
+          <FieldMap
+            onPolygonComplete={handleFieldSelected}
+            initialCenter={initialCenter}
+            height="460px"
+          />
+
+          {/* Save panel — slides in when a field is selected */}
+          {selectedCoords && (
+            <div className="rounded-lg border border-primary/30 bg-primary/5 p-4 space-y-4">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-green-500" />
+                  Field selected — {selectedCoords.length} boundary points
+                </p>
+                <button
+                  onClick={() => { setSelectedCoords(null); setError(null); }}
+                  className="text-muted-foreground hover:text-foreground hover:cursor-pointer"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">
+                    Field Name <span className="text-destructive">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={polygonName}
+                    onChange={(e) => setPolygonName(e.target.value)}
+                    placeholder="e.g. North Field, Back 40"
+                    className="w-full px-3 py-2.5 border border-input rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    autoFocus
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">
+                    Crop Type{' '}
+                    <span className="text-muted-foreground text-xs font-normal">(optional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={cropType}
+                    onChange={(e) => setCropType(e.target.value)}
+                    placeholder="e.g. Corn, Soybeans, Cotton"
+                    className="w-full px-3 py-2.5 border border-input rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <Button onClick={handleSaveField} disabled={isSaving || !polygonName.trim()}>
+                  {isSaving ? (
+                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Saving…</>
+                  ) : (
+                    <><Satellite className="h-4 w-4 mr-2" />Save &amp; Enable Satellite</>
+                  )}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => { setSelectedCoords(null); setError(null); }}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Saved fields list */}
+        {fields.length > 0 && (
           <div className="space-y-3">
+            <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
+              Saved Fields
+            </h2>
             {fields.map((field) => {
               const coords = field.geojson?.coordinates?.[0] ?? [];
-              const center = coords.length > 0
-                ? coords.reduce(([lx, ly], [x, y]) => [lx + x / coords.length, ly + y / coords.length], [0, 0])
-                : null;
+              const center =
+                coords.length > 0
+                  ? coords.reduce(
+                      ([lx, ly], [x, y]) => [lx + x / coords.length, ly + y / coords.length],
+                      [0, 0]
+                    )
+                  : null;
 
               return (
                 <div
@@ -283,22 +307,17 @@ export default function FieldsPage() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <h3 className="font-semibold">{field.polygon_name}</h3>
-                      {field.agro_poly_id ? (
-                        <span className="inline-flex items-center gap-1 text-xs text-emerald-700 bg-emerald-100 rounded-full px-2 py-0.5">
-                          <Satellite className="h-3 w-3" /> Satellite active
-                        </span>
-                      ) : (
-                        <span className="text-xs text-muted-foreground bg-muted rounded-full px-2 py-0.5">
-                          Pending registration
-                        </span>
-                      )}
+                      <span className="inline-flex items-center gap-1 text-xs text-emerald-700 bg-emerald-100 rounded-full px-2 py-0.5">
+                        <Satellite className="h-3 w-3" /> Satellite ready
+                      </span>
                     </div>
                     <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground flex-wrap">
                       {field.crop_type && <span>{field.crop_type}</span>}
                       {center && (
                         <span className="flex items-center gap-1">
                           <MapPin className="h-3 w-3" />
-                          {center[1].toFixed(4)}°N, {center[0].toFixed(4)}°W
+                          {Math.abs(center[1]).toFixed(4)}°{center[1] >= 0 ? 'N' : 'S'},{' '}
+                          {Math.abs(center[0]).toFixed(4)}°{center[0] <= 0 ? 'W' : 'E'}
                         </span>
                       )}
                       <span>{new Date(field.created_at).toLocaleDateString()}</span>
@@ -306,28 +325,36 @@ export default function FieldsPage() {
                   </div>
 
                   <div className="flex items-center gap-2 shrink-0">
-                    {field.agro_poly_id && (
-                      <Link href={`/account/fields/${field.id}/satellite`}>
-                        <Button size="sm" variant="outline">
-                          <Satellite className="h-4 w-4 mr-1.5" />
-                          View Satellite
-                        </Button>
-                      </Link>
-                    )}
+                    <Link href={`/account/fields/${field.id}/satellite`}>
+                      <Button size="sm" variant="outline">
+                        <Satellite className="h-4 w-4 mr-1.5" />
+                        View Satellite
+                      </Button>
+                    </Link>
                     <button
                       onClick={() => handleDeleteField(field.id, field.polygon_name)}
                       disabled={deletingId === field.id}
                       className="p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50 hover:cursor-pointer"
                     >
-                      {deletingId === field.id
-                        ? <Loader2 className="h-4 w-4 animate-spin" />
-                        : <Trash2 className="h-4 w-4" />
-                      }
+                      {deletingId === field.id ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-4 w-4" />
+                      )}
                     </button>
                   </div>
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {/* Empty state — no saved fields yet, but map is already visible above */}
+        {fields.length === 0 && !selectedCoords && (
+          <div className="text-center py-6">
+            <p className="text-sm text-muted-foreground">
+              Click any green field outline on the map above to get started.
+            </p>
           </div>
         )}
       </div>
