@@ -1,6 +1,9 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { Map as MapLibreMap, NavigationControl, AttributionControl, addProtocol } from 'maplibre-gl';
+import { Protocol } from 'pmtiles';
+import 'maplibre-gl/dist/maplibre-gl.css';
 import { getFtwUrl } from '@/lib/ftw';
 
 export interface FieldMapProps {
@@ -39,8 +42,7 @@ export function FieldMap({
   height = '480px',
 }: FieldMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const mapRef = useRef<any>(null);
+  const mapRef = useRef<MapLibreMap | null>(null);
   const [isReady, setIsReady] = useState(false);
   const [ftwLoaded, setFtwLoaded] = useState(false);
   const [selectedCoords, setSelectedCoords] = useState<[number, number][] | null>(null);
@@ -48,13 +50,13 @@ export function FieldMap({
   const [status, setStatus] = useState<string>('Click your field boundary on the map');
 
   // Load FTW PMTiles for the current location
-  const loadFtwLayer = useCallback(async (map: ReturnType<typeof mapRef.current>, center: [number, number]) => {
+  const loadFtwLayer = useCallback(async (map: MapLibreMap, center: [number, number]) => {
     try {
       const pmtilesUrl = await getFtwUrl(center[1], center[0]); // lat, lon
       if (!pmtilesUrl || !map) return;
 
       if (map.getSource('ftw')) {
-        (map.getSource('ftw') as { setUrl: (u: string) => void }).setUrl(`pmtiles://${pmtilesUrl}`);
+        (map.getSource('ftw') as unknown as { setUrl: (u: string) => void }).setUrl(`pmtiles://${pmtilesUrl}`);
       } else {
         map.addSource('ftw', {
           type: 'vector',
@@ -113,130 +115,112 @@ export function FieldMap({
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
 
-    let mapInstance: ReturnType<typeof mapRef.current> | null = null;
+    // Register PMTiles protocol once globally
+    if (!_pmtilesRegistered) {
+      const protocol = new Protocol();
+      addProtocol('pmtiles', protocol.tile.bind(protocol));
+      _pmtilesRegistered = true;
+    }
 
-    Promise.all([
-      import('maplibre-gl'),
-      import('pmtiles'),
-    ]).then(async ([maplibreModule, pmtilesModule]) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const maplibregl = (maplibreModule as any).default ?? maplibreModule;
-      const { Protocol } = pmtilesModule;
+    const map = new MapLibreMap({
+      container: containerRef.current,
+      style: {
+        version: 8,
+        sources: {
+          osm: {
+            type: 'raster',
+            tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+            tileSize: 256,
+            attribution: '© <a href="https://openstreetmap.org">OpenStreetMap</a> contributors',
+          },
+        },
+        layers: [{ id: 'osm', type: 'raster', source: 'osm' }],
+      },
+      center: initialCenter,
+      zoom: 14,
+      attributionControl: false,
+    });
 
-      // Register PMTiles protocol once globally
-      if (!_pmtilesRegistered) {
-        const protocol = new Protocol();
-        maplibregl.addProtocol('pmtiles', protocol.tile.bind(protocol));
-        _pmtilesRegistered = true;
+    map.addControl(new AttributionControl({ compact: true }), 'bottom-right');
+    map.addControl(new NavigationControl(), 'top-right');
+
+    mapRef.current = map;
+
+    map.on('load', async () => {
+      setIsReady(true);
+
+      // Draw existing polygon if editing
+      if (existingCoords && existingCoords.length > 0) {
+        const ring = [...existingCoords, existingCoords[0]];
+        map.addSource('existing', {
+          type: 'geojson',
+          data: { type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [ring] } },
+        });
+        map.addLayer({ id: 'existing-fill', type: 'fill', source: 'existing', paint: { 'fill-color': '#2563eb', 'fill-opacity': 0.25 } });
+        map.addLayer({ id: 'existing-line', type: 'line', source: 'existing', paint: { 'line-color': '#2563eb', 'line-width': 2.5, 'line-dasharray': [4, 2] } });
       }
 
-      if (!containerRef.current) return;
+      // Load FTW field boundaries
+      await loadFtwLayer(map, initialCenter);
+    });
 
-      mapInstance = new maplibregl.Map({
-        container: containerRef.current,
-        style: {
-          version: 8,
-          sources: {
-            osm: {
-              type: 'raster',
-              tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
-              tileSize: 256,
-              attribution: '© <a href="https://openstreetmap.org">OpenStreetMap</a> contributors',
-            },
-          },
-          layers: [{ id: 'osm', type: 'raster', source: 'osm' }],
-        },
-        center: initialCenter,
-        zoom: 14,
-        attributionControl: false,
-      });
+    // Hover effect
+    let hoveredId: number | string | null = null;
+    map.on('mousemove', 'ftw-fill', (e) => {
+      if (!e.features?.length) return;
+      map.getCanvas().style.cursor = 'pointer';
+      if (hoveredId !== null) map.setFeatureState({ source: 'ftw', sourceLayer: '2024', id: hoveredId }, { hovered: false });
+      hoveredId = e.features[0].id ?? null;
+      if (hoveredId !== null) map.setFeatureState({ source: 'ftw', sourceLayer: '2024', id: hoveredId }, { hovered: true });
+    });
+    map.on('mouseleave', 'ftw-fill', () => {
+      map.getCanvas().style.cursor = '';
+      if (hoveredId !== null) map.setFeatureState({ source: 'ftw', sourceLayer: '2024', id: hoveredId }, { hovered: false });
+      hoveredId = null;
+    });
 
-      mapInstance.addControl(
-        new maplibregl.AttributionControl({ compact: true }),
-        'bottom-right'
+    // Track selected ID for highlight
+    let selectedId: number | string | null = null;
+
+    // Click to select a field
+    map.on('click', 'ftw-fill', (e) => {
+      if (!e.features?.length) return;
+      const feature = e.features[0];
+      if (!feature.geometry || feature.geometry.type !== 'Polygon') return;
+
+      // Deselect previous
+      if (selectedId !== null) map.setFeatureState({ source: 'ftw', sourceLayer: '2024', id: selectedId }, { selected: false });
+      selectedId = feature.id ?? null;
+      if (selectedId !== null) map.setFeatureState({ source: 'ftw', sourceLayer: '2024', id: selectedId }, { selected: true });
+
+      // Extract outer ring, drop closing coord
+      const ring = (feature.geometry as GeoJSON.Polygon).coordinates[0] as [number, number][];
+      const coords = ring[ring.length - 1][0] === ring[0][0] && ring[ring.length - 1][1] === ring[0][1]
+        ? ring.slice(0, -1)
+        : ring;
+
+      setSelectedCoords(coords);
+      setStatus(`Field selected — ${coords.length} vertices · Save below`);
+      onPolygonComplete(coords);
+    });
+
+    // Reload FTW when the user pans to a different area (state/country)
+    let lastLoadCenter = initialCenter;
+    map.on('moveend', async () => {
+      const c = map.getCenter();
+      const distKm = Math.sqrt(
+        Math.pow((c.lng - lastLoadCenter[0]) * 111, 2) +
+        Math.pow((c.lat - lastLoadCenter[1]) * 111, 2)
       );
-      mapInstance.addControl(new maplibregl.NavigationControl(), 'top-right');
-
-      mapRef.current = mapInstance;
-
-      mapInstance.on('load', async () => {
-        setIsReady(true);
-
-        // Draw existing polygon if editing
-        if (existingCoords && existingCoords.length > 0) {
-          const ring = [...existingCoords, existingCoords[0]];
-          mapInstance!.addSource('existing', {
-            type: 'geojson',
-            data: { type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [ring] } },
-          });
-          mapInstance!.addLayer({ id: 'existing-fill', type: 'fill', source: 'existing', paint: { 'fill-color': '#2563eb', 'fill-opacity': 0.25 } });
-          mapInstance!.addLayer({ id: 'existing-line', type: 'line', source: 'existing', paint: { 'line-color': '#2563eb', 'line-width': 2.5, 'line-dasharray': [4, 2] } });
-        }
-
-        // Load FTW field boundaries
-        await loadFtwLayer(mapInstance!, initialCenter);
-      });
-
-      // Hover effect
-      let hoveredId: number | string | null = null;
-      mapInstance.on('mousemove', 'ftw-fill', (e: { features?: Array<{ id?: number | string }> }) => {
-        if (!e.features?.length) return;
-        mapInstance!.getCanvas().style.cursor = 'pointer';
-        if (hoveredId !== null) mapInstance!.setFeatureState({ source: 'ftw', sourceLayer: '2024', id: hoveredId }, { hovered: false });
-        hoveredId = e.features[0].id ?? null;
-        if (hoveredId !== null) mapInstance!.setFeatureState({ source: 'ftw', sourceLayer: '2024', id: hoveredId }, { hovered: true });
-      });
-      mapInstance.on('mouseleave', 'ftw-fill', () => {
-        mapInstance!.getCanvas().style.cursor = '';
-        if (hoveredId !== null) mapInstance!.setFeatureState({ source: 'ftw', sourceLayer: '2024', id: hoveredId }, { hovered: false });
-        hoveredId = null;
-      });
-
-      // Track selected ID for highlight
-      let selectedId: number | string | null = null;
-
-      // Click to select a field
-      mapInstance.on('click', 'ftw-fill', (e: { features?: Array<{ id?: number | string; geometry: { type: string; coordinates: [number, number][][] } }> }) => {
-        if (!e.features?.length) return;
-        const feature = e.features[0];
-        if (!feature.geometry || feature.geometry.type !== 'Polygon') return;
-
-        // Deselect previous
-        if (selectedId !== null) mapInstance!.setFeatureState({ source: 'ftw', sourceLayer: '2024', id: selectedId }, { selected: false });
-        selectedId = feature.id ?? null;
-        if (selectedId !== null) mapInstance!.setFeatureState({ source: 'ftw', sourceLayer: '2024', id: selectedId }, { selected: true });
-
-        // Extract outer ring, drop closing coord
-        const ring = feature.geometry.coordinates[0] as [number, number][];
-        const coords = ring[ring.length - 1][0] === ring[0][0] && ring[ring.length - 1][1] === ring[0][1]
-          ? ring.slice(0, -1)
-          : ring;
-
-        setSelectedCoords(coords);
-        setStatus(`Field selected — ${coords.length} vertices · Save below`);
-        onPolygonComplete(coords);
-      });
-
-      // Reload FTW when the user pans to a different area (state/country)
-      let lastLoadCenter = initialCenter;
-      mapInstance.on('moveend', async () => {
-        const c = mapInstance!.getCenter();
-        const distKm = Math.sqrt(
-          Math.pow((c.lng - lastLoadCenter[0]) * 111, 2) +
-          Math.pow((c.lat - lastLoadCenter[1]) * 111, 2)
-        );
-        if (distKm > 200) {
-          lastLoadCenter = [c.lng, c.lat];
-          await loadFtwLayer(mapInstance!, [c.lng, c.lat]);
-        }
-      });
+      if (distKm > 200) {
+        lastLoadCenter = [c.lng, c.lat];
+        await loadFtwLayer(map, [c.lng, c.lat]);
+      }
     });
 
     return () => {
-      if (mapInstance) {
-        mapInstance.remove();
-        mapRef.current = null;
-      }
+      map.remove();
+      mapRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
