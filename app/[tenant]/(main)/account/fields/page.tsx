@@ -48,6 +48,8 @@ export default function FieldsPage() {
   const [cropType, setCropType] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [cropDetecting, setCropDetecting] = useState(false);
+  const [detectedCrop, setDetectedCrop] = useState<string | null>(null);
 
   // Initial map center — use center of first saved field, else default (Georgia)
   const initialCenter: [number, number] = (() => {
@@ -80,11 +82,35 @@ export default function FieldsPage() {
     if (user) fetchFields();
   }, [user, isPending, router, fetchFields]);
 
-  const handleFieldSelected = (coords: [number, number][]) => {
+  const handleFieldSelected = async (coords: [number, number][]) => {
     setSelectedCoords(coords);
     setPolygonName('');
     setCropType('');
+    setDetectedCrop(null);
     setError(null);
+
+    if (coords.length === 0) return;
+
+    // Compute centroid of the polygon
+    const lon = coords.reduce((s, [x]) => s + x, 0) / coords.length;
+    const lat = coords.reduce((s, [, y]) => s + y, 0) / coords.length;
+
+    // Query USDA Cropland Data Layer for the detected crop at this location
+    setCropDetecting(true);
+    try {
+      const res = await fetch(`/api/farm/crop-detect?lat=${lat}&lon=${lon}`);
+      if (res.ok) {
+        const data = await res.json() as { crop: string | null };
+        if (data.crop) {
+          setDetectedCrop(data.crop);
+          setCropType(data.crop);
+        }
+      }
+    } catch {
+      // Non-fatal — user can still enter crop type manually
+    } finally {
+      setCropDetecting(false);
+    }
   };
 
   const handleSaveField = async () => {
@@ -118,6 +144,7 @@ export default function FieldsPage() {
       setSelectedCoords(null);
       setPolygonName('');
       setCropType('');
+      setDetectedCrop(null);
       setSuccess(`"${data.field.polygon_name}" saved — satellite monitoring enabled.`);
       setTimeout(() => setSuccess(null), 6000);
     } catch {
@@ -213,6 +240,8 @@ export default function FieldsPage() {
             onPolygonComplete={handleFieldSelected}
             initialCenter={initialCenter}
             height="460px"
+            detectedCrop={detectedCrop}
+            cropDetecting={cropDetecting}
           />
 
           {/* Save panel — slides in when a field is selected */}
@@ -224,7 +253,7 @@ export default function FieldsPage() {
                   Field selected — {selectedCoords.length} boundary points
                 </p>
                 <button
-                  onClick={() => { setSelectedCoords(null); setError(null); }}
+                  onClick={() => { setSelectedCoords(null); setDetectedCrop(null); setError(null); }}
                   className="text-muted-foreground hover:text-foreground hover:cursor-pointer"
                 >
                   <X className="h-4 w-4" />
@@ -270,7 +299,7 @@ export default function FieldsPage() {
                 </Button>
                 <Button
                   variant="outline"
-                  onClick={() => { setSelectedCoords(null); setError(null); }}
+                  onClick={() => { setSelectedCoords(null); setDetectedCrop(null); setError(null); }}
                 >
                   Cancel
                 </Button>

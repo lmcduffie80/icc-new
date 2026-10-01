@@ -23,6 +23,10 @@ export interface FieldMapProps {
   /** Whether to also show the manual draw toolbar as a fallback. */
   showDrawFallback?: boolean;
   height?: string;
+  /** Crop type detected externally (e.g. via USDA CDL) to show in the status bar. */
+  detectedCrop?: string | null;
+  /** Whether crop detection is in-progress. */
+  cropDetecting?: boolean;
 }
 
 let _pmtilesRegistered = false;
@@ -44,6 +48,8 @@ export function FieldMap({
   initialCenter = [-83.5200, 31.4600], // Tifton area farmland, GA
   showDrawFallback = true,
   height = '480px',
+  detectedCrop,
+  cropDetecting = false,
 }: FieldMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
@@ -242,6 +248,31 @@ export function FieldMap({
           </span>
         )}
       </div>
+
+      {/* Crop detection callout — shown after a field is selected */}
+      {selectedCoords && (
+        <div className="flex items-center gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800">
+          {cropDetecting ? (
+            <>
+              <span className="h-3 w-3 rounded-full border-2 border-amber-400 border-t-transparent animate-spin shrink-0" />
+              <span>Detecting crop from USDA Cropland Data Layer…</span>
+            </>
+          ) : detectedCrop ? (
+            <>
+              <span className="text-base">🌾</span>
+              <span>
+                <span className="font-semibold">{detectedCrop}</span>
+                <span className="text-amber-600 ml-1">detected via USDA CDL — confirm or edit below</span>
+              </span>
+            </>
+          ) : (
+            <>
+              <span className="text-base">🌾</span>
+              <span className="text-amber-700">No crop detected at this location — enter one manually</span>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Map container */}
       <div className="relative rounded-xl overflow-hidden border border-border/60">
