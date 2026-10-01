@@ -50,7 +50,7 @@ export async function GET(
 
     const imageBuffer = await generateFieldImage(field.geojson, targetDate, layerParam);
 
-    return new NextResponse(imageBuffer.buffer as ArrayBuffer, {
+    return new NextResponse(imageBuffer, {
       status: 200,
       headers: {
         'Content-Type': 'image/png',

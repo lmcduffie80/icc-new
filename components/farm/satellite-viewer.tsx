@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { Map } from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import type { VegetationLayer } from '@/lib/sentinel-hub';
 
 interface SatelliteViewerProps {

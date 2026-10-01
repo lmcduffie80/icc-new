@@ -61,6 +61,32 @@ export function isSentinelHubConfigured(): boolean {
   );
 }
 
+// ─── Geometry helpers ─────────────────────────────────────────────────────────
+
+/**
+ * Ensure every ring of a Polygon/MultiPolygon is closed (first coord = last coord).
+ * Sentinel Hub rejects open rings with a 400 COMMON_BAD_PAYLOAD error.
+ */
+function ensureClosedGeometry(geometry: { type: string; coordinates: unknown }): { type: string; coordinates: unknown } {
+  function closeRing(ring: number[][]): number[][] {
+    if (ring.length === 0) return ring;
+    const first = ring[0];
+    const last = ring[ring.length - 1];
+    return first[0] === last[0] && first[1] === last[1] ? ring : [...ring, first];
+  }
+
+  if (geometry.type === 'Polygon') {
+    return { ...geometry, coordinates: (geometry.coordinates as number[][][]).map(closeRing) };
+  }
+  if (geometry.type === 'MultiPolygon') {
+    return {
+      ...geometry,
+      coordinates: (geometry.coordinates as number[][][][]).map((poly) => poly.map(closeRing)),
+    };
+  }
+  return geometry;
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type VegetationLayer = 'ndwi' | 'ndvi' | 'truecolor' | 'evi' | 'false-color';
@@ -94,6 +120,7 @@ export async function searchScenes(
   maxCloudCover = 80
 ): Promise<SatelliteScene[]> {
   const token = await getAccessToken();
+  const closedGeometry = ensureClosedGeometry(geometry);
 
   const res = await fetch(`${SH_BASE}/catalog/1.0.0/search`, {
     method: 'POST',
@@ -104,7 +131,7 @@ export async function searchScenes(
     body: JSON.stringify({
       collections: ['sentinel-2-l2a'],
       datetime: `${from.toISOString()}/${to.toISOString()}`,
-      intersects: geometry,
+      intersects: closedGeometry,
       limit: 50,
       fields: {
         include: ['id', 'properties.datetime', 'properties.eo:cloud_cover'],
@@ -137,11 +164,11 @@ export async function searchScenes(
 
 // ─── Statistical API ──────────────────────────────────────────────────────────
 
-/** Evalscript: compute NDWI + NDVI per pixel, cloud-masked via SCL. */
+/** Evalscript: compute NDWI + NDVI per pixel. Cloud-masked at the scene level via maxCloudCoverage. */
 const STATS_EVALSCRIPT = `//VERSION=3
 function setup() {
   return {
-    input: [{ bands: ["B03","B04","B08","SCL","dataMask"], units: "REFLECTANCE" }],
+    input: [{ bands: ["B03","B04","B08","dataMask"], units: "REFLECTANCE" }],
     output: [
       { id: "ndwi",    bands: 1, sampleType: "FLOAT32" },
       { id: "ndvi",    bands: 1, sampleType: "FLOAT32" },
@@ -150,10 +177,9 @@ function setup() {
   };
 }
 function evaluatePixel(s) {
-  const cloudy = [3,8,9,10].includes(s.SCL);
-  const mask   = cloudy ? 0 : s.dataMask;
-  const ndwi   = (s.B03 + s.B08) > 0 ? (s.B03 - s.B08) / (s.B03 + s.B08) : 0;
-  const ndvi   = (s.B08 + s.B04) > 0 ? (s.B08 - s.B04) / (s.B08 + s.B04) : 0;
+  const mask = s.dataMask;
+  const ndwi = (s.B03 + s.B08) > 0 ? (s.B03 - s.B08) / (s.B03 + s.B08) : 0;
+  const ndvi = (s.B08 + s.B04) > 0 ? (s.B08 - s.B04) / (s.B08 + s.B04) : 0;
   return { ndwi:[ndwi], ndvi:[ndvi], dataMask:[mask] };
 }`;
 
@@ -167,6 +193,7 @@ export async function getVegetationStats(
   to: Date
 ): Promise<VegetationStats[]> {
   const token = await getAccessToken();
+  const closedGeometry = ensureClosedGeometry(geometry);
 
   const res = await fetch(`${SH_BASE}/statistics`, {
     method: 'POST',
@@ -177,7 +204,7 @@ export async function getVegetationStats(
     body: JSON.stringify({
       input: {
         bounds: {
-          geometry,
+          geometry: closedGeometry,
           properties: { crs: 'http://www.opengis.net/def/crs/OGC/1.3/CRS84' },
         },
         data: [{
@@ -188,8 +215,9 @@ export async function getVegetationStats(
       aggregation: {
         timeRange: { from: from.toISOString(), to: to.toISOString() },
         aggregationInterval: { of: 'P10D' },
-        resx: 20,
-        resy: 20,
+        // Resolution in CRS84 degrees: ~20 m at mid-latitudes (0.0002° ≈ 22 m at equator)
+        resx: 0.0002,
+        resy: 0.0002,
         evalscript: STATS_EVALSCRIPT,
       },
     }),
@@ -232,9 +260,8 @@ export async function getVegetationStats(
 const EVALSCRIPTS: Record<VegetationLayer, string> = {
   ndwi: `//VERSION=3
 // NDWI: blue=wet, green=moderate, brown=dry
-function setup(){return{input:[{bands:["B03","B08","SCL","dataMask"]}],output:{bands:4}}}
+function setup(){return{input:[{bands:["B03","B08","dataMask"],units:"REFLECTANCE"}],output:{bands:4}}}
 function evaluatePixel(s){
-  if([8,9,10].includes(s.SCL))return[0,0,0,0];
   const v=(s.B03-s.B08)/(s.B03+s.B08+1e-10);
   let r,g,b;
   if(v>0.3){r=0.0;g=0.2;b=0.9}
@@ -247,9 +274,8 @@ function evaluatePixel(s){
 
   ndvi: `//VERSION=3
 // NDVI: dark green=healthy, yellow=moderate, brown=bare
-function setup(){return{input:[{bands:["B04","B08","SCL","dataMask"]}],output:{bands:4}}}
+function setup(){return{input:[{bands:["B04","B08","dataMask"],units:"REFLECTANCE"}],output:{bands:4}}}
 function evaluatePixel(s){
-  if([8,9,10].includes(s.SCL))return[0,0,0,0];
   const v=(s.B08-s.B04)/(s.B08+s.B04+1e-10);
   let r,g,b;
   if(v>0.5){r=0.0;g=0.45;b=0.0}
@@ -261,14 +287,13 @@ function evaluatePixel(s){
 }`,
 
   truecolor: `//VERSION=3
-function setup(){return{input:[{bands:["B04","B03","B02","dataMask"]}],output:{bands:4}}}
+function setup(){return{input:[{bands:["B04","B03","B02","dataMask"],units:"REFLECTANCE"}],output:{bands:4}}}
 function evaluatePixel(s){return[3.5*s.B04,3.5*s.B03,3.5*s.B02,s.dataMask]}`,
 
   evi: `//VERSION=3
 // EVI: enhanced vegetation index
-function setup(){return{input:[{bands:["B02","B04","B08","SCL","dataMask"]}],output:{bands:4}}}
+function setup(){return{input:[{bands:["B02","B04","B08","dataMask"],units:"REFLECTANCE"}],output:{bands:4}}}
 function evaluatePixel(s){
-  if([8,9,10].includes(s.SCL))return[0,0,0,0];
   const v=2.5*(s.B08-s.B04)/(s.B08+6*s.B04-7.5*s.B02+1+1e-10);
   let r,g,b;
   if(v>0.4){r=0.0;g=0.38;b=0.0}
@@ -280,7 +305,7 @@ function evaluatePixel(s){
 
   'false-color': `//VERSION=3
 // False color: NIR=red, Red=green, Green=blue → healthy veg appears bright red
-function setup(){return{input:[{bands:["B08","B04","B03","dataMask"]}],output:{bands:4}}}
+function setup(){return{input:[{bands:["B08","B04","B03","dataMask"],units:"REFLECTANCE"}],output:{bands:4}}}
 function evaluatePixel(s){return[3.5*s.B08,3.5*s.B04,3.5*s.B03,s.dataMask]}`,
 };
 
@@ -300,6 +325,7 @@ export async function generateFieldImage(
   size = 512
 ): Promise<Buffer> {
   const token = await getAccessToken();
+  const closedGeometry = ensureClosedGeometry(geometry);
 
   const from = new Date(date.getTime() - 4 * 24 * 60 * 60 * 1000);
   const to = new Date(date.getTime() + 4 * 24 * 60 * 60 * 1000);
@@ -314,7 +340,7 @@ export async function generateFieldImage(
     body: JSON.stringify({
       input: {
         bounds: {
-          geometry,
+          geometry: closedGeometry,
           properties: { crs: 'http://www.opengis.net/def/crs/OGC/1.3/CRS84' },
         },
         data: [{

@@ -1,10 +1,14 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { Map as MapLibreMap, NavigationControl, AttributionControl, addProtocol } from 'maplibre-gl';
+import { Map as MapLibreMap, NavigationControl, AttributionControl, addProtocol, setWorkerUrl } from 'maplibre-gl';
 import { Protocol } from 'pmtiles';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { getFtwUrl } from '@/lib/ftw';
+
+// Point MapLibre at the pre-built worker served from /public so Turbopack
+// doesn't try to bundle it (which fails — MapLibre workers are ESM-only).
+setWorkerUrl('/maplibre-gl-worker.mjs');
 
 export interface FieldMapProps {
   /**
@@ -37,7 +41,7 @@ let _pmtilesRegistered = false;
 export function FieldMap({
   onPolygonComplete,
   existingCoords,
-  initialCenter = [-83.4019, 31.4395], // default: Georgia
+  initialCenter = [-83.5200, 31.4600], // Tifton area farmland, GA
   showDrawFallback = true,
   height = '480px',
 }: FieldMapProps) {
@@ -61,6 +65,7 @@ export function FieldMap({
         map.addSource('ftw', {
           type: 'vector',
           url: `pmtiles://${pmtilesUrl}`,
+          maxzoom: 13, // FTW tiles only go to z13; MapLibre will overzoom from there
           attribution: '© <a href="https://fieldsofthe.world">Fields of the World</a> (CC-BY-4.0)',
         });
 
@@ -137,7 +142,7 @@ export function FieldMap({
         layers: [{ id: 'osm', type: 'raster', source: 'osm' }],
       },
       center: initialCenter,
-      zoom: 14,
+      zoom: 13,
       attributionControl: false,
     });
 

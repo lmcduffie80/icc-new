@@ -58,6 +58,20 @@ exports.default = _default;
   console.log('Created aria-query regionRole.js stub');
 }
 
+// Fix 4: MapLibre GL JS v6 — copy worker + shared bundle to /public/ so that
+// Next.js/Turbopack doesn't try to bundle the ESM-only worker (which fails).
+// The field-map component calls setWorkerUrl('/maplibre-gl-worker.mjs').
+const maplibreDistDir = path.join(__dirname, '../node_modules/maplibre-gl/dist');
+const publicDir = path.join(__dirname, '../public');
+for (const file of ['maplibre-gl-worker.mjs', 'maplibre-gl-shared.mjs']) {
+  const src = path.join(maplibreDistDir, file);
+  const dest = path.join(publicDir, file);
+  if (fs.existsSync(src)) {
+    fs.copyFileSync(src, dest);
+    console.log(`Copied ${file} to public/`);
+  }
+}
+
 // Fix 3: zod missing ESM iso.js
 const zodDir = findPnpmPackageDir('zod');
 const zodIsoPath = zodDir

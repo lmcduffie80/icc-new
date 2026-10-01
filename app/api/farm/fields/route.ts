@@ -87,9 +87,19 @@ export async function POST(request: NextRequest) {
   }
 
   const { polygon_name, coordinates, crop_type, notes } = parsed.data;
+
+  // Ensure the ring is closed (first coord === last coord) so that Sentinel Hub
+  // and other geospatial APIs receive a valid GeoJSON Polygon.
+  const first = coordinates[0];
+  const last = coordinates[coordinates.length - 1];
+  const closedRing =
+    first[0] === last[0] && first[1] === last[1]
+      ? coordinates
+      : ([...coordinates, first] as [number, number][]);
+
   const geojson = {
     type: 'Polygon',
-    coordinates: [coordinates],
+    coordinates: [closedRing],
   };
 
   try {
