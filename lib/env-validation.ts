@@ -93,6 +93,14 @@ const envSchema = z.object({
   // OpenET API (optional — ET data on Soil Intelligence page disabled when not configured)
   OPENET_API_KEY: z.string().min(1).optional(),
 
+  // Agromonitoring API (optional — parked, replaced by Copernicus Sentinel Hub)
+  AGROMONITORING_API_KEY: z.string().min(1).optional(),
+
+  // Copernicus Sentinel Hub (optional — field satellite imagery, NDWI/NDVI disabled when not configured)
+  COPERNICUS_CLIENT_ID: z.string().min(1).optional(),
+  COPERNICUS_CLIENT_SECRET: z.string().min(1).optional(),
+  COPERNICUS_INSTANCE_ID: z.string().min(1).optional(),
+
   // Node environment
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
 });

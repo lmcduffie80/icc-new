@@ -1,4 +1,4 @@
-import { Package, User, MessageSquare, CreditCard, Settings, FileText, Wheat, Sprout, Landmark, type LucideIcon } from 'lucide-react';
+import { Package, User, MessageSquare, CreditCard, Settings, FileText, Wheat, Sprout, Landmark, Map, type LucideIcon } from 'lucide-react';
 
 export interface AccountNavItem {
   href: string;
@@ -29,6 +29,12 @@ export const accountNavItems: AccountNavItem[] = [
     icon: Wheat,
     label: 'My Farm',
     description: 'Manage your farm information',
+  },
+  {
+    href: '/account/fields',
+    icon: Map,
+    label: 'Field Satellite',
+    description: 'View satellite imagery and water index for your fields',
   },
   {
     href: '/crop',
