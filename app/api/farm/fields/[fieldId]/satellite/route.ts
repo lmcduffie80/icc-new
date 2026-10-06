@@ -59,10 +59,31 @@ export async function GET(
     const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
     const geometry = field.geojson;
 
-    const [scenes, stats] = await Promise.all([
+    // Use allSettled so one failing call doesn't kill the entire response.
+    // e.g. stats API might succeed even if catalog search is temporarily down.
+    const [scenesResult, statsResult] = await Promise.allSettled([
       searchScenes(geometry, ninetyDaysAgo, now, 80),
       getVegetationStats(geometry, ninetyDaysAgo, now),
     ]);
+
+    if (scenesResult.status === 'rejected') {
+      console.error('[satellite] searchScenes failed:', scenesResult.reason);
+    }
+    if (statsResult.status === 'rejected') {
+      console.error('[satellite] getVegetationStats failed:', statsResult.reason);
+    }
+
+    // If BOTH calls failed it is likely a credentials / network problem — surface a real error.
+    if (scenesResult.status === 'rejected' && statsResult.status === 'rejected') {
+      const detail =
+        process.env.NODE_ENV === 'development'
+          ? String(scenesResult.reason)
+          : 'Satellite imagery unavailable — please try again later.';
+      return NextResponse.json({ error: detail }, { status: 502 });
+    }
+
+    const scenes = scenesResult.status === 'fulfilled' ? scenesResult.value : [];
+    const stats  = statsResult.status  === 'fulfilled' ? statsResult.value  : [];
 
     const result = {
       scenes,
@@ -74,7 +95,7 @@ export async function GET(
     // Cache result
     if (redis) {
       try {
-        await redis.setex(cacheKey, CACHE_TTL, JSON.stringify(result));
+        await redis.set(cacheKey, result, { ex: CACHE_TTL });
       } catch {
         // Non-fatal
       }
@@ -82,9 +103,15 @@ export async function GET(
 
     return NextResponse.json(result);
   } catch (error) {
+    console.error('[satellite] Unhandled error in satellite route:', error);
     securityLogger.logError('Failed to fetch satellite data', error, ip);
     return NextResponse.json(
-      { error: 'Failed to fetch satellite data. Please try again.' },
+      {
+        error:
+          process.env.NODE_ENV === 'development'
+            ? `Satellite error: ${String(error)}`
+            : 'Failed to fetch satellite data. Please try again.',
+      },
       { status: 500 }
     );
   }
