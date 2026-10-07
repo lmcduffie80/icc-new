@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import type { Map } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { AlertCircle, RefreshCw } from 'lucide-react';
 import type { VegetationLayer } from '@/lib/sentinel-hub';
 
 interface SatelliteViewerProps {
@@ -33,7 +34,8 @@ const LAYER_LABELS: Record<VegetationLayer, string> = {
  * (/api/farm/fields/[fieldId]/satellite/image) which authenticates with
  * Sentinel Hub and returns a PNG cached at the CDN layer.
  *
- * Uses Leaflet ImageOverlay positioned exactly over the field bounding box.
+ * Uses fetch() to pre-load images so errors surface properly before
+ * being passed to Leaflet as blob URLs.
  */
 export function SatelliteViewer({
   scenes,
@@ -47,8 +49,12 @@ export function SatelliteViewer({
   const mapRef = useRef<Map | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const overlayRef = useRef<any>(null);
+  const blobUrlRef = useRef<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
   const [isReady, setIsReady] = useState(false);
   const [imageLoading, setImageLoading] = useState(false);
+  const [imageError, setImageError] = useState<string | null>(null);
 
   const selectedScene = scenes[selectedSceneIndex];
 
@@ -117,36 +123,73 @@ export function SatelliteViewer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Update satellite image overlay when scene or layer changes
-  useEffect(() => {
+  // Pre-fetch image as a blob URL so we can detect API errors before passing
+  // to Leaflet. This surfaces 500s and other failures instead of showing a
+  // silent blank rectangle (Leaflet's default for a broken <img> src).
+  const loadImage = useCallback(async (date: string, currentLayer: VegetationLayer) => {
     const map = mapRef.current;
-    if (!map || !isReady || !selectedScene) return;
+    if (!map) return;
 
-    const date = selectedScene.date.split('T')[0]; // ISO date only
-    const imageUrl = `/api/farm/fields/${fieldId}/satellite/image?date=${date}&layer=${layer}`;
+    // Cancel any in-flight request
+    if (abortRef.current) abortRef.current.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
 
-    import('leaflet').then((L) => {
+    setImageLoading(true);
+    setImageError(null);
+
+    const apiUrl = `/api/farm/fields/${fieldId}/satellite/image?date=${date}&layer=${currentLayer}`;
+
+    try {
+      const res = await fetch(apiUrl, { signal: controller.signal });
+      if (!res.ok) {
+        const text = await res.text().catch(() => res.statusText);
+        throw new Error(`Image API ${res.status}: ${text.slice(0, 200)}`);
+      }
+
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+
+      // Clean up previous blob URL
+      if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
+      blobUrlRef.current = blobUrl;
+
+      const L = await import('leaflet');
+
       // Remove previous overlay
       if (overlayRef.current) {
         map.removeLayer(overlayRef.current);
         overlayRef.current = null;
       }
 
-      setImageLoading(true);
-
-      const overlay = L.imageOverlay(imageUrl, bounds, {
-        opacity: 0.85,
+      const overlay = L.imageOverlay(blobUrl, bounds, { opacity: 0.85,
         attribution: '&copy; <a href="https://dataspace.copernicus.eu">Copernicus</a> Sentinel-2',
       });
 
       overlay.on('load',  () => setImageLoading(false));
-      overlay.on('error', () => setImageLoading(false));
+      overlay.on('error', () => {
+        setImageLoading(false);
+        setImageError('Image failed to render on map');
+      });
 
       overlay.addTo(map);
       overlayRef.current = overlay;
-    });
+    } catch (err) {
+      if ((err as Error).name === 'AbortError') return; // cancelled — ignore
+      console.error('[SatelliteViewer] Image load failed:', err);
+      setImageLoading(false);
+      setImageError((err as Error).message ?? 'Failed to load satellite image');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fieldId]);
+
+  // Re-fetch when scene or layer changes
+  useEffect(() => {
+    if (!isReady || !selectedScene) return;
+    const date = selectedScene.date.split('T')[0];
+    loadImage(date, layer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedScene, layer, isReady]);
+  }, [selectedScene, layer, isReady, loadImage]);
 
   if (scenes.length === 0) {
     return (
@@ -166,10 +209,27 @@ export function SatelliteViewer({
           className="absolute inset-0 flex items-center justify-center bg-muted/40 z-[1000] text-sm text-muted-foreground"
           style={{ height }}
         >
-          {!isReady ? 'Loading map…' : 'Fetching satellite image…'}
+          {!isReady ? 'Loading map…' : `Fetching ${LAYER_LABELS[layer]} image…`}
         </div>
       )}
+
+      {imageError && !imageLoading && (
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-[1000] flex items-center gap-2 rounded-lg border border-destructive/30 bg-background/95 px-3 py-2 text-xs text-destructive shadow-md backdrop-blur-sm">
+          <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+          <span>Image unavailable for this layer</span>
+          <button
+            onClick={() => {
+              if (selectedScene) loadImage(selectedScene.date.split('T')[0], layer);
+            }}
+            className="ml-1 flex items-center gap-1 font-medium underline underline-offset-2 hover:cursor-pointer"
+          >
+            <RefreshCw className="h-3 w-3" /> Retry
+          </button>
+        </div>
+      )}
+
       <div ref={containerRef} style={{ height, width: '100%' }} />
+
       {isReady && selectedScene && (
         <div className="absolute bottom-3 left-3 z-[1000] rounded-lg border border-border/60 bg-background/90 px-3 py-1.5 text-xs backdrop-blur-sm">
           <span className="font-medium">{LAYER_LABELS[layer]}</span>
@@ -183,6 +243,7 @@ export function SatelliteViewer({
           <span className="text-muted-foreground">{selectedScene.cloudCover}% cloud</span>
         </div>
       )}
+
       {isReady && (
         <div className="absolute top-3 right-3 z-[1000] rounded-lg border border-border/60 bg-background/90 px-2 py-1 text-[10px] text-muted-foreground backdrop-blur-sm">
           Copernicus · Sentinel-2

@@ -59,6 +59,7 @@ export async function GET(
       },
     });
   } catch (error) {
+    console.error('[satellite/image] Failed to generate field image:', error);
     securityLogger.logError('Failed to generate field image', error, ip);
     return new NextResponse('Failed to generate image', { status: 500 });
   }
